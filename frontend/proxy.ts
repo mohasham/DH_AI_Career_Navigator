@@ -1,6 +1,6 @@
 /**
  * ===================================================================
- * AUTH MIDDLEWARE — ROUTE PROTECTION
+ * AUTH PROXY — ROUTE PROTECTION
  * ===================================================================
  *
  * Runs on EVERY request, before any page component renders. Checks
@@ -8,13 +8,8 @@
  * they're trying to reach a page that requires login, redirects
  * them to /auth/login instead of letting the page load.
  *
- * WHY MIDDLEWARE (not a check inside each page):
- * Doing this in middleware means we write the protection logic ONCE,
- * here, instead of repeating an "if not logged in, redirect" check
- * inside every single protected page (dashboard, onboarding, profile,
- * assessment, etc.). Adding a new protected page later just means
- * adding its path to the list below — no new auth code needed on
- * that page itself.
+ * (Renamed from middleware.ts to proxy.ts per Next.js 16's renamed
+ * file convention — see Next.js docs on "Renaming Middleware to Proxy".)
  * ===================================================================
  */
 
@@ -38,9 +33,6 @@ const PROTECTED_PATHS = [
 export async function proxy(request: NextRequest) {
   const response = NextResponse.next();
 
-  // Creates a Supabase client that can read the session from the
-  // incoming request's cookies (this is the server-side equivalent
-  // of the browser client we use in lib/auth/supabase-client.ts).
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -58,13 +50,21 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  // Checks if there's a valid, active session for this request.
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
 
   const path = request.nextUrl.pathname;
   const isProtectedPath = PROTECTED_PATHS.some((p) => path.startsWith(p));
 
-  // No session, but trying to reach a protected page → redirect to login.
+  // console.log("🔍 PROXY DEBUG:", {
+  //   path,
+  //   isProtectedPath,
+  //   hasSession: !!session,
+  //   sessionError: sessionError?.message,
+  // });
+
   if (isProtectedPath && !session) {
     const loginUrl = new URL("/auth/login", request.url);
     return NextResponse.redirect(loginUrl);
@@ -73,11 +73,6 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
-/**
- * Tells Next.js which paths this middleware should even run on.
- * Excluding static files, images, and Next.js internals keeps this
- * check from running on every single asset request unnecessarily.
- */
 export const config = {
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|logo-icon.png|logo-lockup.png|onboarding-illustration.png).*)",
