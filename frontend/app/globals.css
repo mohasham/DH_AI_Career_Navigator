@@ -46,6 +46,23 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* ------------------------------------------------------------
+     Brand palette — AI Career Navigator
+     Prefixed with "brand-" to avoid colliding with shadcn's own
+     --accent/--muted tokens above, which control unrelated UI
+     chrome (default button/border colors). These are OUR colors,
+     matching the BRD, logo, and approved wireframes exactly.
+     Tailwind v4 auto-generates real utility classes from these:
+     bg-brand-navy, text-brand-accent, border-brand-line, etc.
+  ------------------------------------------------------------ */
+  --color-brand-navy: #1F3864;
+  --color-brand-navy-dark: #152744;
+  --color-brand-accent: #2E5496;
+  --color-brand-accent-soft: #E8EEF7;
+  --color-brand-muted: #6B7688;
+  --color-brand-line: #E2E7EF;
+  --color-brand-ink: #1B2433;
 }
 
 :root {
