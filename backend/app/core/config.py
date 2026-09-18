@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     # Groq API key — powers the AI roadmap generation and career chat.
     groq_api_key: str = ""
 
+    # Which model Groq should run inference on. We use OpenAI's open-weight
+    # gpt-oss-20b model, hosted on Groq's infrastructure for fast, low-cost
+    # inference. Kept as a setting (not hardcoded in each API call) so we
+    # can swap models later without touching the actual AI service code.
+    groq_model: str = "openai/gpt-oss-20b"
+
     # Which frontend origin is allowed to call this API (CORS).
     # In production this should be the deployed Vercel URL, not localhost.
     allowed_origins: str = "http://localhost:3000"
