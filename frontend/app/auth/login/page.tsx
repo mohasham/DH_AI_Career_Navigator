@@ -26,6 +26,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/auth/supabase-client";
+import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -67,14 +68,14 @@ export default function LoginPage() {
   // sign-in page; there's no need to manually redirect afterward,
   // since Supabase handles bringing the user back via redirectTo
   // once Google confirms their identity.
-  async function handleGoogleLogin() {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/dashboard`,
-      },
-    });
-  }
+async function handleGoogleLogin() {
+  await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+    },
+  });
+}
 
   return (
     <div className="h-screen overflow-hidden flex font-sans">
@@ -100,7 +101,7 @@ export default function LoginPage() {
           relative
         "
       >
-        <div className="flex items-center gap-2.5">
+        <Link href="/" className="flex items-center gap-2.5">
           <Image
             src="/logo-icon.png"
             alt="AI Career Navigator"
@@ -110,7 +111,7 @@ export default function LoginPage() {
           <span className="font-bold text-base">
             AI <span className="text-blue-300">Career Navigator</span>
           </span>
-        </div>
+        </Link>
 
         <h1 className="text-3xl font-bold leading-tight mt-8">
           Welcome back.
