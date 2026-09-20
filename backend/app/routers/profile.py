@@ -24,21 +24,30 @@ async def create_profile(
     user_id: str = Depends(get_current_user_id),
 ):
     """
-    Creates the profile row for the current user, right after they
-    finish the onboarding form for the first time.
-
-    The profile's id is always set to the authenticated user's own
-    id (from the token, not from anything the frontend sends) — this
-    is what guarantees a user can never create a profile under
-    someone else's account, even if they tried to tamper with the
-    request.
+    Creates the profile row for the current user. If a profile
+    already exists for this user (e.g. a double-submitted form,
+    or the user going back and resubmitting onboarding), returns
+    a clean 409 Conflict instead of crashing with an unhandled
+    database error — the frontend can catch this and redirect
+    the user onward rather than showing a broken error page.
     """
     supabase = get_supabase()
 
     data = profile.model_dump()
     data["id"] = user_id
 
-    result = supabase.table("profiles").insert(data).execute()
+    try:
+        result = supabase.table("profiles").insert(data).execute()
+    except Exception as e:
+        # Postgres error code 23505 = unique constraint violation.
+        # This specifically catches "profile already exists for
+        # this user" rather than treating it as an unexpected crash.
+        if "23505" in str(e) or "duplicate key" in str(e):
+            raise HTTPException(
+                status_code=409,
+                detail="A profile already exists for this user.",
+            )
+        raise HTTPException(status_code=400, detail="Failed to create profile.")
 
     if not result.data:
         raise HTTPException(status_code=400, detail="Failed to create profile.")
