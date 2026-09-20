@@ -267,8 +267,6 @@ export default function HomePage() {
                 items-center
                 gap-2
                 rounded-full
-                border
-                border-blue-100
                 bg-white/80
                 px-4
                 py-2
@@ -287,8 +285,8 @@ export default function HomePage() {
             {/* Heading */}
 
             <h1
-              className="
-                max-w-xl
+        className="
+          font-heading                max-w-xl
                 text-4xl
                 font-bold
                 leading-[1.07]
@@ -442,8 +440,6 @@ export default function HomePage() {
                 min-h-[540px]
                 overflow-hidden
                 rounded-[2.2rem]
-                border
-                border-blue-100
                 bg-gradient-to-br
                 from-[#f5f9ff]
                 via-white
@@ -587,7 +583,6 @@ export default function HomePage() {
                     w-full
                     max-w-[390px]
                     object-contain
-                    drop-shadow-xl
                   "
                 />
               </div>
@@ -678,7 +673,6 @@ export default function HomePage() {
                 z-40
                 w-[245px]
                 rounded-2xl
-                border
                 border-slate-200
                 bg-white
                 p-4
@@ -765,7 +759,6 @@ export default function HomePage() {
                 hidden
                 w-44
                 rounded-2xl
-                border
                 border-slate-200
                 bg-white
                 p-4
@@ -876,8 +869,8 @@ export default function HomePage() {
             />
 
             <h2
-              className="
-                mt-4
+        className="
+          font-heading                mt-4
                 text-3xl
                 font-bold
                 tracking-tight
@@ -1029,8 +1022,8 @@ export default function HomePage() {
             />
 
             <h2
-              className="
-                mt-5
+        className="
+          font-heading                mt-5
                 max-w-lg
                 text-3xl
                 font-bold
@@ -1204,8 +1197,8 @@ export default function HomePage() {
                 </p>
 
                 <h3
-                  className="
-                    mt-2
+        className="
+          font-heading                    mt-2
                     text-xl
                     font-bold
                     text-brand-navy
@@ -1255,7 +1248,6 @@ export default function HomePage() {
                 items-center
                 gap-4
                 rounded-2xl
-                border
                 border-amber-100
                 bg-amber-50
                 p-4
@@ -1305,8 +1297,8 @@ export default function HomePage() {
             />
 
             <h2
-              className="
-                mt-5
+        className="
+          font-heading                mt-5
                 text-3xl
                 font-bold
                 leading-tight
@@ -1386,8 +1378,8 @@ export default function HomePage() {
             />
 
             <h2
-              className="
-                mt-5
+        className="
+          font-heading                mt-5
                 text-3xl
                 font-bold
                 leading-tight
@@ -1467,8 +1459,8 @@ export default function HomePage() {
                 </p>
 
                 <h3
-                  className="
-                    mt-1
+        className="
+          font-heading                    mt-1
                     text-lg
                     font-bold
                     text-brand-navy
@@ -1800,8 +1792,8 @@ export default function HomePage() {
             />
 
             <h2
-              className="
-                mt-5
+        className="
+          font-heading                mt-5
                 text-3xl
                 font-bold
                 leading-tight
@@ -1832,8 +1824,6 @@ export default function HomePage() {
               className="
                 mt-8
                 rounded-2xl
-                border
-                border-blue-100
                 bg-blue-50/60
                 p-5
               "
@@ -1952,8 +1942,8 @@ export default function HomePage() {
             </div>
 
             <h2
-              className="
-                mt-6
+        className="
+          font-heading                mt-6
                 text-3xl
                 font-bold
                 tracking-tight
@@ -2440,7 +2430,7 @@ function JourneyCard({
 
       <h3
         className="
-          mt-2
+          font-heading          mt-2
           text-base
           font-bold
           text-brand-navy
