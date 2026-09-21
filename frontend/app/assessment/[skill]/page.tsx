@@ -196,7 +196,7 @@ export default function AssessmentPage() {
   if (result) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f8faff] px-6">
-        <div className="w-full max-w-md rounded-[1.75rem] border border-slate-200 bg-white p-8 text-center shadow-xl shadow-slate-900/[0.04]">
+        <div className="animate-result-in w-full max-w-md rounded-[1.75rem] border border-slate-200 bg-white p-8 text-center shadow-xl shadow-slate-900/[0.04]">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-50">
             <BrainCircuit size={28} className="text-brand-accent" />
           </div>
@@ -205,9 +205,9 @@ export default function AssessmentPage() {
             {skillDisplayName} Assessment Complete
           </p>
 
-          <h1 className="mt-2 text-4xl font-bold text-brand-navy">
+            <h1 className="animate-score-pop mt-2 text-4xl font-bold text-brand-navy">
             {result.score}%
-          </h1>
+            </h1>
 
           <p className="mt-2 text-sm text-slate-500">
             You answered {result.correct_count} of {result.total_questions}{" "}

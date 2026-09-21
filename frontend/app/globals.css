@@ -144,3 +144,47 @@
     @apply font-sans;
   }
 }
+
+/* ------------------------------------------------------------
+   Results screen entrance animation — a subtle fade + scale-in
+   for the assessment results card, making the score reveal feel
+   more rewarding. Lightweight, no external library needed.
+------------------------------------------------------------ */
+@keyframes result-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-result-in {
+  animation: result-card-in 0.4s ease-out;
+}
+
+/* ------------------------------------------------------------
+   Score number pop-in — plays slightly AFTER the card's own
+   fade-in (0.15s delay), giving the score a small emphasis
+   moment once the card has settled into place.
+------------------------------------------------------------ */
+@keyframes score-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-score-pop {
+  animation: score-pop-in 0.5s ease-out 0.15s both;
+}
