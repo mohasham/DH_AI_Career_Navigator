@@ -24,3 +24,26 @@ class CareerMatchesResponse(BaseModel):
     list of career matches for the current user, best match first.
     """
     matches: List[CareerMatch]
+
+
+class SkillGap(BaseModel):
+    """
+    Shape of a single skill's gap for a specific career — the
+    skill name, the user's current level, what's required, and
+    the numeric gap between them.
+    """
+    skill_name: str
+    current_level: int
+    required_level: int
+    gap: int
+    importance: int
+
+
+class GapAnalysisResponse(BaseModel):
+    """
+    Shape of the full response for GET /careers/{id}/gap — the
+    career's name plus a breakdown of every required skill,
+    ordered so the biggest, most important gaps surface first.
+    """
+    career_title: str
+    skill_gaps: List[SkillGap]
