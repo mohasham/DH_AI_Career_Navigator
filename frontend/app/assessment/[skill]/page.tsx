@@ -30,26 +30,14 @@ import { apiGet, apiPost } from "@/lib/api/client";
  *
  * Dynamic route — [skill] means this same file handles
  * /assessment/python, /assessment/sql, /assessment/javascript, etc.
- * The skill name comes from the URL itself, matched against
- * useParams(). No separate skill-selection screen exists per the
- * approved wireframe (Screen 3 shows the assessment already in
- * progress for one specific skill).
  *
  * ---------------------------------------------------------------------
- * WHAT'S REAL VS. WHAT WAS PLACEHOLDER
+ * RESULTS SCREEN (ACN-60)
  * ---------------------------------------------------------------------
- * - Questions are now fetched live from
- *   GET /assessment/questions/{skill} on page load — no more
- *   hardcoded array. The backend returns options and difficulty
- *   but never the correct_answer, so cheating via dev tools isn't
- *   possible.
- * - Answers are now stored as { questionId: answerText }, matching
- *   exactly what POST /assessment/submit expects — not option
- *   indexes like the original placeholder version.
- * - On the final question, handleNext() now actually calls
- *   POST /assessment/submit with the real answers and waits for a
- *   real score back, instead of just console.log-ing and redirecting.
- * - All visual design/JSX is unchanged from the original file.
+ * After a successful POST /assessment/submit, we no longer redirect
+ * immediately — we store the response in `result` state and render
+ * a dedicated results screen showing the user's real score, before
+ * they choose to continue toward career matching (Sprint 4).
  * =====================================================================
  */
 
@@ -64,45 +52,27 @@ export default function AssessmentPage() {
   const router = useRouter();
   const params = useParams();
   const skillParam = (params.skill as string) || "";
-  // Capitalized version for display (e.g. "python" -> "Python"),
-  // matching how skill names are actually stored in the database.
   const skillDisplayName =
     skillParam.charAt(0).toUpperCase() + skillParam.slice(1);
 
-  /**
-   * -------------------------------------------------------------------
-   * DATA-LOADING STATE
-   * -------------------------------------------------------------------
-   */
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  /**
-   * -------------------------------------------------------------------
-   * ASSESSMENT STATE
-   * -------------------------------------------------------------------
-   */
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-
-  /**
-   * Answers are now stored by question ID -> the SELECTED ANSWER TEXT
-   * (not an option index). This matches exactly what
-   * POST /assessment/submit expects: { "1": "def", "2": "..." }
-   */
   const [answers, setAnswers] = useState<Record<number, string>>({});
 
-  // Submission state for the final "Complete assessment" step.
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  /**
-   * -------------------------------------------------------------------
-   * LOAD REAL QUESTIONS FROM THE BACKEND
-   * -------------------------------------------------------------------
-   * Runs once when the page loads (or if the skill in the URL
-   * changes). Replaces the old hardcoded questions array entirely.
-   */
+  // Holds the real score returned by POST /assessment/submit once
+  // the user finishes — drives the results screen below.
+  const [result, setResult] = useState<{
+    score: number;
+    correct_count: number;
+    total_questions: number;
+  } | null>(null);
+
   useEffect(() => {
     if (!skillParam) return;
 
@@ -125,40 +95,22 @@ export default function AssessmentPage() {
   }, [skillParam]);
 
   const currentQuestion = questions[currentQuestionIndex];
- const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined;
+  const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined;
   const totalQuestions = questions.length;
   const currentQuestionNumber = currentQuestionIndex + 1;
-// Progress is based on how many questions have actually been
-// ANSWERED (not just how far the user has scrolled/clicked to),
-// so the bar only reaches 100% once the final question is
-// actually answered — not just arrived at.
-const answeredCount = Object.keys(answers).length;
-const progressPercentage =
-  totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0;
 
-  /**
-   * -------------------------------------------------------------------
-   * SELECT ANSWER
-   * -------------------------------------------------------------------
-   * Now stores the actual answer TEXT the user clicked, not its
-   * index — this is what the backend needs to compare against the
-   * real correct_answer.
-   */
+  const answeredCount = Object.keys(answers).length;
+  const progressPercentage =
+    totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0;
+
   function selectAnswer(optionText: string) {
     if (!currentQuestion) return;
-    setAnswers((previousAnswers) => {
-      const updated = {
-        ...previousAnswers,
-        [currentQuestion.id]: optionText,
-      };
-      return updated;
-    });
+    setAnswers((previousAnswers) => ({
+      ...previousAnswers,
+      [currentQuestion.id]: optionText,
+    }));
   }
-  /**
-   * -------------------------------------------------------------------
-   * NEXT QUESTION / SUBMIT ASSESSMENT
-   * -------------------------------------------------------------------
-   */
+
   async function handleNext() {
     if (currentAnswer === undefined) return;
 
@@ -167,21 +119,22 @@ const progressPercentage =
       return;
     }
 
-    // ---------------------------------------------------------------
-    // FINAL QUESTION — actually submit to the backend for real
-    // scoring, instead of the old console.log + immediate redirect.
-    // ---------------------------------------------------------------
     setSubmitting(true);
     setSubmitError(null);
 
     try {
-      await apiPost("/assessment/submit", {
+      const response = await apiPost<{
+        score: number;
+        correct_count: number;
+        total_questions: number;
+      }>("/assessment/submit", {
         skill_name: skillDisplayName,
         answers,
       });
 
-      // Real submission succeeded — now it's safe to move on.
-      router.push("/matches");
+      // Show the result screen instead of redirecting immediately —
+      // the user should actually see their score before moving on.
+      setResult(response);
     } catch (err) {
       setSubmitError(
         err instanceof Error
@@ -193,11 +146,6 @@ const progressPercentage =
     }
   }
 
-  /**
-   * -------------------------------------------------------------------
-   * PREVIOUS QUESTION
-   * -------------------------------------------------------------------
-   */
   function handleBack() {
     if (currentQuestionIndex > 0) {
       setCurrentQuestionIndex((previousIndex) => previousIndex - 1);
@@ -207,9 +155,7 @@ const progressPercentage =
   }
 
   // ---------------------------------------------------------------
-  // LOADING / ERROR STATES — shown while fetching real questions.
-  // Kept minimal since these are new states the original file
-  // didn't need (it had hardcoded data available instantly).
+  // LOADING STATE
   // ---------------------------------------------------------------
   if (loading) {
     return (
@@ -219,6 +165,9 @@ const progressPercentage =
     );
   }
 
+  // ---------------------------------------------------------------
+  // ERROR STATE — skill not found, or no questions for it
+  // ---------------------------------------------------------------
   if (loadError || !currentQuestion) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f8faff] px-6 text-center">
@@ -237,6 +186,50 @@ const progressPercentage =
     );
   }
 
+  // ---------------------------------------------------------------
+  // RESULTS SCREEN (ACN-60) — shown after a successful submission,
+  // before the user continues on toward career matching (Sprint 4).
+  // This must come AFTER the loading/error checks above, but BEFORE
+  // the main question UI below, so it only takes over once a real
+  // result actually exists.
+  // ---------------------------------------------------------------
+  if (result) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f8faff] px-6">
+        <div className="w-full max-w-md rounded-[1.75rem] border border-slate-200 bg-white p-8 text-center shadow-xl shadow-slate-900/[0.04]">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-50">
+            <BrainCircuit size={28} className="text-brand-accent" />
+          </div>
+
+          <p className="mt-5 text-xs font-bold uppercase tracking-wider text-brand-accent">
+            {skillDisplayName} Assessment Complete
+          </p>
+
+          <h1 className="mt-2 text-4xl font-bold text-brand-navy">
+            {result.score}%
+          </h1>
+
+          <p className="mt-2 text-sm text-slate-500">
+            You answered {result.correct_count} of {result.total_questions}{" "}
+            questions correctly.
+          </p>
+
+          <button
+            type="button"
+            onClick={() => router.push("/matches")}
+            className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-accent px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/15 transition-all hover:bg-brand-navy"
+          >
+            Continue to career matches
+            <ArrowRight size={15} />
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  // ---------------------------------------------------------------
+  // MAIN QUESTION UI
+  // ---------------------------------------------------------------
   return (
     <main className="min-h-screen bg-[#f8faff] text-brand-ink">
       {/* ===============================================================
@@ -440,8 +433,6 @@ const progressPercentage =
                   })}
                 </div>
 
-                {/* Submission error, if POST /assessment/submit fails
-                    on the final question */}
                 {submitError && (
                   <p className="mt-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
                     {submitError}
