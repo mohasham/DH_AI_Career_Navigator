@@ -151,7 +151,6 @@ const progressPercentage =
         ...previousAnswers,
         [currentQuestion.id]: optionText,
       };
-      console.log("Updated answers state:", updated);
       return updated;
     });
   }
