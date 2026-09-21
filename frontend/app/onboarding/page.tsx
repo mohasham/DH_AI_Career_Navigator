@@ -222,9 +222,11 @@ export default function OnboardingPage() {
       });
 
       // Profile saved successfully — move to the next onboarding
-      // stage. This route doesn't exist yet (Sprint 3), so it will
-      // 404 until that page is built — expected for now.
-      router.push("/assessment");
+      // stage. Now that the Sprint 3 assessment page exists at a
+      // dynamic route, we redirect to a specific skill (Python) as
+      // a starting point, since there's no skill-selection screen
+      // in the wireframes yet.
+      router.push("/assessment/python");
     } catch (err) {
       setError(
         err instanceof Error
