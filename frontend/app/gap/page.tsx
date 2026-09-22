@@ -113,7 +113,7 @@ export default function SkillGapPage() {
   }
 
   function buildRoadmap() {
-    router.push("/roadmap");
+    router.push("/roadmap?career=${careerId}");
   }
 
   // ---------------------------------------------------------------

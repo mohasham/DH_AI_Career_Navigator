@@ -70,7 +70,7 @@ def health_check():
 # Each feature's routes live in their own file inside app/routers/,
 # keeping this main.py file clean as the project grows. We import
 # the router object from each file and "mount" it onto the main app.
-from app.routers import profile , assessment, careers
+from app.routers import profile , assessment, careers, roadmap
 
 # No prefix here since profile.py's routes are already defined as
 # "/profile" directly (e.g. @router.post("/profile")) — adding a
@@ -78,3 +78,7 @@ from app.routers import profile , assessment, careers
 app.include_router(profile.router, tags=["Profile"])
 app.include_router(assessment.router, tags=["Assessment"])
 app.include_router(careers.router, tags=["Careers"])
+app.include_router(profile.router, tags=["Profile"])
+app.include_router(assessment.router, tags=["Assessment"])
+app.include_router(careers.router, tags=["Careers"])
+app.include_router(roadmap.router, tags=["Roadmap"])
