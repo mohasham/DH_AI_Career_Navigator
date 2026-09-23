@@ -18,11 +18,13 @@ class RoadmapStepOut(BaseModel):
     """
     Shape of a single step in the generated roadmap.
     """
+    step_id: int
     step_order: int
     title: str
     description: str
     skill_name: Optional[str] = None
     resource_url: Optional[str] = None
+    is_completed: bool = False
 
 
 class RoadmapResponse(BaseModel):
