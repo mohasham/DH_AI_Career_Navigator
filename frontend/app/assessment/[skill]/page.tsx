@@ -31,6 +31,13 @@ import { apiGet, apiPost } from "@/lib/api/client";
  * Dynamic route — [skill] means this same file handles
  * /assessment/python, /assessment/sql, /assessment/javascript, etc.
  *
+ * NOTE: this page lives OUTSIDE the (app) route group deliberately —
+ * taking an assessment is a focused, quiz-like task, not dashboard
+ * browsing, so it keeps its own standalone header rather than the
+ * shared sidebar layout. The skill-PICKER page (/assessment, listing
+ * all 6 skills) stays inside (app) since that IS dashboard-like
+ * browsing.
+ *
  * ---------------------------------------------------------------------
  * RESULTS SCREEN (ACN-60)
  * ---------------------------------------------------------------------
@@ -651,7 +658,7 @@ function AssessmentRouteItem({
       </span>
 
       {active && (
-        <span className="ml-auto rounded-full bg-blue-300/15 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-blue-200">
+        <span className="ml-auto rounded-full bg-blue-300/15 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-200">
           Current
         </span>
       )}

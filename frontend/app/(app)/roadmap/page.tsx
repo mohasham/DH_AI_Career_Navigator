@@ -199,7 +199,7 @@ export default function RoadmapPage() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f8faff] px-6 text-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#f8faff] px-6 text-center">
         <div>
           <p className="text-sm text-slate-500">
             Generating your personalized roadmap...
@@ -208,13 +208,13 @@ export default function RoadmapPage() {
             This can take a few seconds while AI builds your steps.
           </p>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (loadError || !data) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f8faff] px-6 text-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#f8faff] px-6 text-center">
         <div>
           <p className="text-sm font-semibold text-red-600">
             {loadError || "Could not generate your roadmap."}
@@ -226,7 +226,7 @@ export default function RoadmapPage() {
             Back to career matches
           </button>
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -237,24 +237,8 @@ export default function RoadmapPage() {
   );
 
   return (
-    <main className="min-h-screen bg-[#f8faff] text-brand-ink">
-      <header className="border-b border-slate-100 bg-white/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
-          <div className="flex items-center gap-2.5">
-            <Image src="/logo-icon.png" alt="AI Career Navigator" width={34} height={34} priority />
-            <span className="text-base font-bold text-brand-navy">
-              AI <span className="text-brand-accent">Career Navigator</span>
-            </span>
-          </div>
-
-          <div className="hidden items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-brand-accent sm:flex">
-            <Route size={14} />
-            Personalized Roadmap
-          </div>
-        </div>
-      </header>
-
-      <div className="relative overflow-hidden">
+    <div className="relative min-w-0 flex-1 overflow-hidden">
+<div className="relative overflow-hidden">
         <div className="pointer-events-none absolute -right-48 -top-40 h-[500px] w-[500px] rounded-full bg-blue-100/60 blur-3xl" />
         <div className="pointer-events-none absolute -left-52 top-[600px] h-[450px] w-[450px] rounded-full bg-indigo-100/40 blur-3xl" />
         <div className="pointer-events-none absolute inset-0 opacity-[0.025] [background-image:linear-gradient(to_right,#1e3a8a_1px,transparent_1px),linear-gradient(to_bottom,#1e3a8a_1px,transparent_1px)] [background-size:40px_40px]" />
@@ -475,7 +459,7 @@ export default function RoadmapPage() {
           </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
 

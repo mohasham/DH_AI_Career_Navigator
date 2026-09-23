@@ -98,6 +98,7 @@ async def get_dashboard_summary(user_id: str = Depends(get_current_user_id)):
 
     return DashboardSummary(
         has_roadmap=True,
+        career_id=career_id,
         target_career=career_title,
         readiness_percentage=roadmap["readiness_percentage"] or 0,
         steps_completed=steps_completed,

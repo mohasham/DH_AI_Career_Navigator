@@ -121,15 +121,15 @@ export default function SkillGapPage() {
   // ---------------------------------------------------------------
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f8faff]">
+      <div className="flex min-h-screen items-center justify-center bg-[#f8faff]">
         <p className="text-sm text-slate-500">Loading skill gap analysis...</p>
-      </main>
+      </div>
     );
   }
 
   if (loadError || !data) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f8faff] px-6 text-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#f8faff] px-6 text-center">
         <div>
           <p className="text-sm font-semibold text-red-600">
             {loadError || "Could not load skill gap analysis."}
@@ -141,32 +141,16 @@ export default function SkillGapPage() {
             Back to career matches
           </button>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#f8faff] text-brand-ink">
+    <div className="relative min-w-0 flex-1 overflow-hidden">
       {/* ===============================================================
           HEADER
       =============================================================== */}
-      <header className="border-b border-slate-100 bg-white/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
-          <div className="flex items-center gap-2.5">
-            <Image src="/logo-icon.png" alt="AI Career Navigator" width={34} height={34} priority />
-            <span className="text-base font-bold text-brand-navy">
-              AI <span className="text-brand-accent">Career Navigator</span>
-            </span>
-          </div>
-
-          <div className="hidden items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-brand-accent sm:flex">
-            <BarChart3 size={14} />
-            Skill Gap Analysis
-          </div>
-        </div>
-      </header>
-
-      {/* ===============================================================
+{/* ===============================================================
           BACKGROUND
       =============================================================== */}
       <div className="relative overflow-hidden">
@@ -430,7 +414,7 @@ export default function SkillGapPage() {
           </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
 

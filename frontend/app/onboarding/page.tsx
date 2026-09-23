@@ -245,11 +245,10 @@ export default function OnboardingPage() {
         industry_interest: industryInterest || null,
       });
 
-      // Profile saved successfully — move to the next onboarding
-      // stage. Redirects to a specific skill (Python) as a starting
-      // point, since there's no skill-selection screen in the
-      // wireframes yet.
-      router.push("/assessment/python");
+// Profile saved successfully — move to the next onboarding
+// stage: the skill-picker page, where the user chooses which
+// skill to assess first.
+      router.push("/assessment");
     } catch (err) {
       setError(
         err instanceof Error

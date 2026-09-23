@@ -19,6 +19,7 @@ class DashboardSummary(BaseModel):
     the frontend making several separate calls on load.
     """
     has_roadmap: bool
+    career_id: Optional[int] = None
     target_career: Optional[str] = None
     readiness_percentage: int = 0
     steps_completed: int = 0

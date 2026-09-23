@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
-  ArrowLeft,
   BriefcaseBusiness,
   Check,
   Compass,
@@ -123,35 +122,17 @@ export default function EditProfilePage() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f8faff]">
+      <div className="flex min-h-screen items-center justify-center bg-[#f8faff]">
         <p className="text-sm text-slate-500">Loading your profile...</p>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#f8faff] text-brand-ink">
+    <div className="relative min-w-0 flex-1 overflow-hidden">
       {/* HEADER */}
-      <header className="border-b border-slate-100 bg-white/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-20 max-w-3xl items-center justify-between px-6">
-          <div className="flex items-center gap-2.5">
-            <Image src="/logo-icon.png" alt="AI Career Navigator" width={34} height={34} priority />
-            <span className="text-base font-bold text-brand-navy">
-              AI <span className="text-brand-accent">Career Navigator</span>
-            </span>
-          </div>
-        </div>
-      </header>
-
       <div className="mx-auto max-w-3xl px-6 py-10">
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard")}
-          className="mb-7 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-brand-accent"
-        >
-          <ArrowLeft size={15} />
-          Back to dashboard
-        </button>
+
 
         <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-white px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-brand-accent shadow-sm">
           <Sparkles size={13} />
@@ -276,7 +257,7 @@ export default function EditProfilePage() {
           </div>
         </form>
       </div>
-    </main>
+    </div>
   );
 }
 
