@@ -64,7 +64,7 @@ from groq import Groq
 from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.db.database import get_supabase
-from app.schemas.roadmap import RoadmapGenerateRequest, RoadmapResponse, RoadmapStepOut
+from app.schemas.roadmap import RoadmapGenerateRequest, RoadmapResponse, RoadmapStepOut, RoadmapRecalculateRequest
 
 router = APIRouter()
 
@@ -346,6 +346,136 @@ async def generate_roadmap(
             ],
         )
 
+
+@router.post("/roadmap/recalculate", response_model=RoadmapResponse)
+async def recalculate_roadmap(
+    request: RoadmapRecalculateRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Refreshes an existing roadmap against the user's CURRENT skill
+    levels. This is the fix for a known limitation: a roadmap step
+    generated when a skill was low (e.g. "learn SQL") stays sitting
+    there even after the user later masters that skill via a real
+    assessment or capped activity logging — this endpoint detects
+    that and removes steps for skills that are no longer a gap.
+
+    Steps are only ever REMOVED here if their skill's gap has
+    dropped to 0 — never silently regenerated via a new Groq call,
+    to avoid unnecessary AI cost/latency on every recalculation.
+    """
+    supabase = get_supabase()
+
+    roadmap_result = (
+        supabase.table("roadmaps")
+        .select("id, career_id, profile_id")
+        .eq("id", request.roadmap_id)
+        .single()
+        .execute()
+    )
+
+    if not roadmap_result.data:
+        raise HTTPException(status_code=404, detail="Roadmap not found.")
+
+    if roadmap_result.data["profile_id"] != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to recalculate this roadmap.",
+        )
+
+    career_id = roadmap_result.data["career_id"]
+
+    career_result = (
+        supabase.table("careers").select("title").eq("id", career_id).single().execute()
+    )
+    career_title = career_result.data["title"] if career_result.data else "Career"
+
+    existing_steps_result = (
+        supabase.table("roadmap_steps")
+        .select("id, step_order, title, description, resource_url, is_completed, skill_id, skills(name)")
+        .eq("roadmap_id", request.roadmap_id)
+        .order("step_order")
+        .execute()
+    )
+    existing_steps = existing_steps_result.data or []
+
+    requirements_result = (
+        supabase.table("career_skills")
+        .select("skill_id, required_level")
+        .eq("career_id", career_id)
+        .execute()
+    )
+    requirements = requirements_result.data or []
+    required_by_skill = {r["skill_id"]: r["required_level"] or 0 for r in requirements}
+
+    skill_ids = [r["skill_id"] for r in requirements]
+    user_skills_result = (
+        supabase.table("user_skills")
+        .select("skill_id, assessed_level")
+        .eq("profile_id", user_id)
+        .in_("skill_id", skill_ids)
+        .execute()
+    )
+    user_skill_levels = {
+        row["skill_id"]: row["assessed_level"] or 0
+        for row in (user_skills_result.data or [])
+    }
+
+    steps_to_keep = []
+
+    for step in existing_steps:
+        skill_id = step["skill_id"]
+        required_level = required_by_skill.get(skill_id, 0)
+        current_level = user_skill_levels.get(skill_id, 0)
+
+        still_has_gap = current_level < required_level
+
+        if still_has_gap:
+            steps_to_keep.append(step)
+        else:
+            supabase.table("roadmap_steps").delete().eq("id", step["id"]).execute()
+
+    response_steps = []
+    for i, step in enumerate(steps_to_keep, start=1):
+        if step["step_order"] != i:
+            supabase.table("roadmap_steps").update({"step_order": i}).eq(
+                "id", step["id"]
+            ).execute()
+
+        response_steps.append(
+            RoadmapStepOut(
+                step_id=step["id"],
+                step_order=i,
+                title=step["title"],
+                description=step["description"],
+                skill_name=step["skills"]["name"] if step["skills"] else None,
+                resource_url=step["resource_url"],
+                is_completed=step["is_completed"] or False,
+            )
+        )
+
+    total_required = 0
+    total_current = 0
+    for skill_id, required_level in required_by_skill.items():
+        current_level = user_skill_levels.get(skill_id, 0)
+        total_required += required_level
+        total_current += min(current_level, required_level)
+
+    readiness_percentage = (
+        round((total_current / total_required) * 100) if total_required > 0 else 0
+    )
+
+    supabase.table("roadmaps").update(
+        {"readiness_percentage": readiness_percentage}
+    ).eq("id", request.roadmap_id).execute()
+
+    return RoadmapResponse(
+        roadmap_id=request.roadmap_id,
+        career_title=career_title,
+        readiness_percentage=readiness_percentage,
+        already_existed=True,
+        steps=response_steps,
+    )
     # ------------------------------------------------------------
     # STEP 2 — Call Groq to generate the ordered, explained steps.
     # response_format="json_object" forces syntactically valid JSON

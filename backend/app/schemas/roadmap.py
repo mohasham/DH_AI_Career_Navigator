@@ -36,3 +36,16 @@ class RoadmapResponse(BaseModel):
     readiness_percentage: int
     already_existed: bool = False
     steps: List[RoadmapStepOut]
+
+
+class RoadmapRecalculateRequest(BaseModel):
+    """
+    Shape of the request when a user asks to refresh their roadmap
+    against their current, possibly-improved skill levels. This
+    powers POST /roadmap/recalculate, which detects and removes
+    roadmap steps for skills the user has since mastered (e.g. via
+    a real assessment retake or capped activity logging), fixing
+    the known "stale roadmap" limitation from the original
+    generation endpoint.
+    """
+    roadmap_id: int
