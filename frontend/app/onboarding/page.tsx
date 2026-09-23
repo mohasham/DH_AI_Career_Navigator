@@ -21,7 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/auth/supabase-client";
-import { apiPost } from "@/lib/api/client";
+import { apiGet, apiPost } from "@/lib/api/client";
 
 /**
  * =====================================================================
@@ -51,21 +51,23 @@ import { apiPost } from "@/lib/api/client";
  * required by the backend's ProfileCreate schema, so this page fetches
  * it via useUser-style logic and includes it in the POST body.
  *
- * NOT YET CONNECTED: skills. The skills chips UI is fully functional
- * as local state (add/remove/duplicate-prevention all work), but is
- * deliberately NOT sent to the backend yet. Skills live in a separate
- * `user_skills` table that references a `skills` reference table —
- * which has no seed data yet (that's a Sprint 3 task: populating
- * skills/careers, then building real skill matching). Saving free-typed
- * skill strings now would create throwaway data that has to be
- * redone properly once Sprint 3's skill assessment feature exists.
- * The UI stays fully built and visible; only the persistence is
- * deferred to the sprint where it actually belongs.
+ * SKILLS — free-text entry, exactly like the original static version:
+ * a user can type ANY skill, including ones not in our seeded catalog
+ * (e.g. "Next.js", "Docker") — there is no restriction. Real skills
+ * from GET /skills are shown as small clickable "+ SkillName"
+ * suggestion pills ABOVE the input purely as a convenient shortcut,
+ * not a requirement — clicking one just adds it instantly, but
+ * typing anything else works exactly the same as before. This
+ * profile field is deliberately informational/self-descriptive only;
+ * it is NOT what drives assessment or matching (that only ever comes
+ * from the real assessment flow in Sprint 3, or the capped
+ * activity-logging system in Sprint 6), so restricting it to a
+ * fixed catalog would be more limiting than useful. Persistence to
+ * the backend is still deliberately deferred — this stays local UI
+ * state. The section starts empty — no pre-filled assumptions about
+ * what the user already knows.
  *
- * Redirects to /assessment on success — that page doesn't exist yet
- * (Sprint 3), so this will 404 until that sprint is built. This is
- * expected and intentional: the route is correct for the eventual
- * flow, it's just pointing at a not-yet-built destination for now.
+ * Redirects to /assessment/python on success.
  * =====================================================================
  */
 
@@ -98,16 +100,29 @@ export default function OnboardingPage() {
 
   /**
    * Skills are stored as an array because the user can add/remove them.
-   * NOTE: intentionally NOT sent to the backend yet — see file header
-   * comment for why. This stays as pure local UI state for now.
+   * Starts empty — no pre-filled placeholder assumptions about what
+   * the user already knows. NOTE: intentionally NOT sent to the
+   * backend on submit — see file header comment for why.
    */
-  const [skills, setSkills] = useState<string[]>([
-    "Python",
-    "JavaScript",
-    "React",
-  ]);
+  const [skills, setSkills] = useState<string[]>([]);
 
   const [skillInput, setSkillInput] = useState("");
+
+  // Real skills fetched from the database — used only to render
+  // clickable suggestion pills above the input, as a convenient
+  // shortcut. Does NOT restrict what the user can type/add.
+  const [availableSkills, setAvailableSkills] = useState<string[]>([]);
+
+  useEffect(() => {
+    apiGet<{ skills: { id: number; name: string }[] }>("/skills")
+      .then((data) => {
+        setAvailableSkills(data.skills.map((s) => s.name));
+      })
+      .catch(() => {
+        // Fail silently — if this fails, no suggestion pills render,
+        // but free-text typing still works fine either way.
+      });
+  }, []);
 
   /**
    * -------------------------------------------------------------------
@@ -129,12 +144,11 @@ export default function OnboardingPage() {
 
   /**
    * -------------------------------------------------------------------
-   * ADD SKILL
+   * ADD SKILL (via typing + Add button, or Enter key)
    * -------------------------------------------------------------------
    *
-   * Adds the typed skill to the array.
-   *
-   * We also:
+   * Adds whatever the user typed — no restriction to a fixed skill
+   * catalog. We still:
    * - remove surrounding spaces
    * - prevent empty skills
    * - prevent duplicate skills
@@ -156,6 +170,16 @@ export default function OnboardingPage() {
 
     setSkills((currentSkills) => [...currentSkills, cleanedSkill]);
     setSkillInput("");
+  }
+
+  /**
+   * -------------------------------------------------------------------
+   * ADD SKILL VIA SUGGESTION PILL (instant, one click)
+   * -------------------------------------------------------------------
+   */
+
+  function addSkillDirectly(skillName: string) {
+    setSkills((current) => [...current, skillName]);
   }
 
   /**
@@ -222,10 +246,9 @@ export default function OnboardingPage() {
       });
 
       // Profile saved successfully — move to the next onboarding
-      // stage. Now that the Sprint 3 assessment page exists at a
-      // dynamic route, we redirect to a specific skill (Python) as
-      // a starting point, since there's no skill-selection screen
-      // in the wireframes yet.
+      // stage. Redirects to a specific skill (Python) as a starting
+      // point, since there's no skill-selection screen in the
+      // wireframes yet.
       router.push("/assessment/python");
     } catch (err) {
       setError(
@@ -448,7 +471,9 @@ export default function OnboardingPage() {
 
                 <div className="h-px bg-slate-100" />
 
-                {/* SECTION 3 — SKILLS (local-state only, not saved yet — see file header) */}
+                {/* SECTION 3 — SKILLS (free-text, same as original;
+                    real skill names shown as optional clickable
+                    suggestions above the input, not a restriction) */}
                 <FormSection
                   icon={<Sparkles size={17} />}
                   title="Your current skills"
@@ -464,6 +489,27 @@ export default function OnboardingPage() {
                             onRemove={() => removeSkill(skill)}
                           />
                         ))}
+                      </div>
+                    )}
+
+                    {/* Real skills shown as optional quick-pick
+                        suggestion pills — a convenient shortcut,
+                        never a restriction. Typing anything else in
+                        the input below still works exactly the same. */}
+                    {availableSkills.length > 0 && (
+                      <div className="mb-3 flex flex-wrap gap-1.5">
+                        {availableSkills
+                          .filter((name) => !skills.includes(name))
+                          .map((name) => (
+                            <button
+                              key={name}
+                              type="button"
+                              onClick={() => addSkillDirectly(name)}
+                              className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-semibold text-brand-accent transition hover:bg-blue-50"
+                            >
+                              + {name}
+                            </button>
+                          ))}
                       </div>
                     )}
 
