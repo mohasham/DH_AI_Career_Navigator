@@ -15,6 +15,7 @@ import {
   Compass,
   Flag,
   MapPin,
+  Plus,
   Route,
   Sparkles,
   Target,
@@ -31,36 +32,34 @@ import { apiPost } from "@/lib/api/client";
  * frontend/app/roadmap/page.tsx
  *
  * ---------------------------------------------------------------------
- * WHAT'S REAL VS. WHAT WAS PLACEHOLDER
+ * PROGRESS TRACKING (Sprint 6 addition)
  * ---------------------------------------------------------------------
- * - The career comes from a REAL query param (?career={id}), passed
- *   from the gap analysis page's "Build my roadmap" button.
- * - On load, this page calls POST /roadmap/generate. If the user
- *   already has a roadmap for this career, the backend returns the
- *   EXISTING one (already_existed: true) instead of generating a
- *   new one — avoids duplicate Groq calls and duplicate database
- *   rows on repeat visits.
- * - Steps no longer have "duration" or "resourceProvider" fields
- *   like the original placeholder design — the real AI-generated
- *   steps use resource_url instead, populated from a curated,
- *   hand-picked lookup table in the backend (never AI-invented, to
- *   avoid hallucinated/fake links).
- * - Step status (completed/current/locked) doesn't exist in the
- *   real data yet — that's Sprint 6's job. For now: since every
- *   roadmap is freshly generated, no step starts "completed". The
- *   first step is shown as "current", the rest as "upcoming".
- * - readiness_percentage comes directly from the real backend
- *   response, computed by the same deterministic math as gap
- *   analysis, never by AI.
+ * - Each step now has a real "Mark as complete" checkbox, calling
+ *   POST /progress/update. Toggling it updates is_completed locally
+ *   AND recalculates the roadmap's readiness_percentage using the
+ *   backend's blended formula (70% assessed skill, 30% step
+ *   completion).
+ * - Each step also has a small "Log activity" form (type + optional
+ *   description), calling POST /progress/activity. This lets a user
+ *   record real work (project/video/article/exercise) toward that
+ *   skill, contributing a fixed point value, CAPPED AT 80 total from
+ *   self-reported activity alone — a real, quiz-based assessment
+ *   (Sprint 3) is the ONLY way to reach a skill score above 80. This
+ *   directly addresses the concern that a bare checkbox reaching
+ *   100% would be meaningless: self-reported effort now has
+ *   structure, a visible running score, and an honest ceiling below
+ *   verified mastery.
  * =====================================================================
  */
 
 type RoadmapStepData = {
+  step_id: number;
   step_order: number;
   title: string;
   description: string;
   skill_name: string | null;
   resource_url: string | null;
+  is_completed: boolean;
 };
 
 type RoadmapData = {
@@ -69,6 +68,15 @@ type RoadmapData = {
   readiness_percentage: number;
   already_existed: boolean;
   steps: RoadmapStepData[];
+};
+
+type ActivityType = "project" | "video" | "article" | "exercise";
+
+const ACTIVITY_LABELS: Record<ActivityType, string> = {
+  project: "Project",
+  video: "Video course",
+  article: "Article",
+  exercise: "Practice exercise",
 };
 
 export default function RoadmapPage() {
@@ -80,15 +88,6 @@ export default function RoadmapPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  /**
-   * -------------------------------------------------------------------
-   * GENERATE THE REAL ROADMAP
-   * -------------------------------------------------------------------
-   * Calls POST /roadmap/generate on load — this triggers the full
-   * chain: real gap data -> Groq -> validated steps -> saved to
-   * Supabase -> returned here. Or, if one already exists for this
-   * career, the backend returns that existing roadmap instead.
-   */
   useEffect(() => {
     if (!careerId) {
       setLoadError("No career selected. Please choose a career from your matches first.");
@@ -112,6 +111,47 @@ export default function RoadmapPage() {
       });
   }, [careerId]);
 
+  /**
+   * -------------------------------------------------------------------
+   * TOGGLE STEP COMPLETION
+   * -------------------------------------------------------------------
+   * Calls POST /progress/update and applies the recalculated
+   * readiness_percentage returned by the backend immediately, so the
+   * UI reflects real progress without a separate refetch.
+   */
+  async function toggleStepComplete(step: RoadmapStepData) {
+    if (!data) return;
+    const newState = !step.is_completed;
+
+    try {
+      const result = await apiPost<{
+        step_id: number;
+        is_completed: boolean;
+        roadmap_id: number;
+        completed_steps: number;
+        total_steps: number;
+        readiness_percentage: number;
+      }>("/progress/update", {
+        step_id: step.step_id,
+        is_completed: newState,
+      });
+
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              readiness_percentage: result.readiness_percentage,
+              steps: prev.steps.map((s) =>
+                s.step_id === step.step_id ? { ...s, is_completed: newState } : s
+              ),
+            }
+          : prev
+      );
+    } catch (err) {
+      console.error("Failed to update step:", err);
+    }
+  }
+
   function goBack() {
     router.push(`/gap?career=${careerId}`);
   }
@@ -120,9 +160,6 @@ export default function RoadmapPage() {
     router.push("/dashboard");
   }
 
-  // ---------------------------------------------------------------
-  // LOADING / ERROR STATES
-  // ---------------------------------------------------------------
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f8faff] px-6 text-center">
@@ -156,14 +193,14 @@ export default function RoadmapPage() {
     );
   }
 
-  const currentStep = data.steps[0];
-  const nextStep = data.steps[1];
+  const completedCount = data.steps.filter((s) => s.is_completed).length;
+  const currentStep = data.steps.find((s) => !s.is_completed) || data.steps[0];
+  const nextStep = data.steps.find(
+    (s) => s.step_id !== currentStep?.step_id && !s.is_completed
+  );
 
   return (
     <main className="min-h-screen bg-[#f8faff] text-brand-ink">
-      {/* ===============================================================
-          HEADER
-      =============================================================== */}
       <header className="border-b border-slate-100 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
           <div className="flex items-center gap-2.5">
@@ -180,9 +217,6 @@ export default function RoadmapPage() {
         </div>
       </header>
 
-      {/* ===============================================================
-          BACKGROUND
-      =============================================================== */}
       <div className="relative overflow-hidden">
         <div className="pointer-events-none absolute -right-48 -top-40 h-[500px] w-[500px] rounded-full bg-blue-100/60 blur-3xl" />
         <div className="pointer-events-none absolute -left-52 top-[600px] h-[450px] w-[450px] rounded-full bg-indigo-100/40 blur-3xl" />
@@ -198,9 +232,6 @@ export default function RoadmapPage() {
             Back to skill gaps
           </button>
 
-          {/* ===========================================================
-              PAGE INTRO
-          =========================================================== */}
           <div className="mb-9 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-white px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-brand-accent shadow-sm">
@@ -215,7 +246,8 @@ export default function RoadmapPage() {
 
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">
                 Your learning path is ordered so each skill builds on the
-                last. Skills you already have don&apos;t appear here.
+                last. Mark steps complete and log real activities to track
+                your progress.
               </p>
 
               {data.already_existed && (
@@ -251,9 +283,6 @@ export default function RoadmapPage() {
             </div>
           </div>
 
-          {/* ===========================================================
-              JOURNEY PROGRESS
-          =========================================================== */}
           <div className="mb-8 rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm sm:px-7">
             <div className="relative grid grid-cols-5">
               <div className="absolute left-[10%] right-[10%] top-5 h-0.5 bg-slate-100" />
@@ -267,34 +296,27 @@ export default function RoadmapPage() {
             </div>
           </div>
 
-          {/* ===========================================================
-              SUMMARY CARDS
-          =========================================================== */}
           <div className="mb-8 grid gap-4 md:grid-cols-3">
             <SummaryCard icon={<Target size={19} />} title="Overall readiness" value={`${data.readiness_percentage}%`}>
               <p className="mt-2 text-[10px] text-slate-400">
-                Based on your assessed skills
+                Based on your assessed skills + progress
               </p>
             </SummaryCard>
 
-            <SummaryCard icon={<CheckCircle2 size={19} />} title="Progress" value={`0/${data.steps.length}`}>
+            <SummaryCard icon={<CheckCircle2 size={19} />} title="Progress" value={`${completedCount}/${data.steps.length}`}>
               <p className="mt-2 text-[10px] text-slate-400">
                 Roadmap steps completed
               </p>
             </SummaryCard>
 
             <SummaryCard icon={<BookOpen size={19} />} title="Current focus" value={currentStep?.skill_name ?? "—"} compact>
-              <p className="mt-2 text-[10px] text-slate-400">Step 1</p>
+              <p className="mt-2 text-[10px] text-slate-400">
+                {completedCount === data.steps.length ? "All steps done!" : "In progress"}
+              </p>
             </SummaryCard>
           </div>
 
-          {/* ===========================================================
-              MAIN GRID
-          =========================================================== */}
           <div className="grid items-start gap-8 lg:grid-cols-[1fr_340px]">
-            {/* =========================================================
-                ROADMAP TIMELINE
-            ========================================================= */}
             <section className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-xl shadow-slate-900/[0.04]">
               <div className="border-b border-slate-100 px-6 py-6 sm:px-8">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -303,8 +325,7 @@ export default function RoadmapPage() {
                       Your learning route
                     </h2>
                     <p className="mt-1 text-xs text-slate-400">
-                      Follow the steps in order to close your highest-impact
-                      skill gaps.
+                      Mark steps complete and log activities as you go.
                     </p>
                   </div>
 
@@ -318,18 +339,16 @@ export default function RoadmapPage() {
               <div className="px-6 py-3 sm:px-8">
                 {data.steps.map((step, index) => (
                   <RoadmapStepCard
-                    key={step.step_order}
+                    key={step.step_id}
                     step={step}
-                    isFirst={index === 0}
+                    isCurrent={step.step_id === currentStep?.step_id}
                     isLast={index === data.steps.length - 1}
+                    onToggleComplete={() => toggleStepComplete(step)}
                   />
                 ))}
               </div>
             </section>
 
-            {/* =========================================================
-                SIDEBAR
-            ========================================================= */}
             <aside className="space-y-5 lg:sticky lg:top-28">
               <div className="relative overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-brand-navy via-[#173c73] to-brand-accent p-6 text-white shadow-xl shadow-blue-950/15">
                 <Compass size={180} strokeWidth={0.6} className="absolute -right-12 -top-12 text-white/10" />
@@ -344,28 +363,29 @@ export default function RoadmapPage() {
                   </p>
 
                   <h3 className="mt-2 text-xl font-bold">
-                    {currentStep?.title ?? "Get started"}
+                    {currentStep?.title ?? "All done!"}
                   </h3>
 
                   <p className="mt-3 text-sm leading-6 text-blue-100/75">
-                    Complete this step to keep moving toward your goal of
-                    becoming a {data.career_title}.
+                    {completedCount === data.steps.length
+                      ? `You've completed every step toward becoming a ${data.career_title}.`
+                      : `Complete this step to keep moving toward your goal of becoming a ${data.career_title}.`}
                   </p>
 
                   <div className="mt-7 rounded-xl border border-white/10 bg-white/10 p-4 backdrop-blur">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-200">
-                        Current step
+                        Progress
                       </span>
                       <span className="text-xs font-bold">
-                        1 of {data.steps.length}
+                        {completedCount} of {data.steps.length}
                       </span>
                     </div>
 
                     <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
                       <div
-                        className="h-full rounded-full bg-emerald-400"
-                        style={{ width: `${100 / data.steps.length}%` }}
+                        className="h-full rounded-full bg-emerald-400 transition-all duration-500"
+                        style={{ width: `${(completedCount / data.steps.length) * 100}%` }}
                       />
                     </div>
                   </div>
@@ -388,12 +408,6 @@ export default function RoadmapPage() {
                       </h3>
                     </div>
                   </div>
-
-                  <p className="mt-4 text-xs leading-5 text-slate-500">
-                    Finish{" "}
-                    <strong className="text-brand-navy">{currentStep?.title}</strong>{" "}
-                    to move on to {nextStep.title}.
-                  </p>
                 </div>
               )}
 
@@ -415,43 +429,93 @@ export default function RoadmapPage() {
 
 /**
  * =====================================================================
- * ROADMAP STEP CARD — adapted to real fields only (no duration or
- * resourceProvider, since the real AI response doesn't include
- * them). resource_url now links to a curated, real learning
- * resource (populated by the backend's SKILL_RESOURCES lookup,
- * never AI-generated). Status is derived purely from position:
- * first step = "current", everything else = "upcoming", until
- * Sprint 6 adds real completion tracking.
+ * ROADMAP STEP CARD — now includes a real "Mark as complete"
+ * checkbox and an activity-logging form.
  * =====================================================================
  */
 function RoadmapStepCard({
   step,
-  isFirst,
+  isCurrent,
   isLast,
+  onToggleComplete,
 }: {
   step: RoadmapStepData;
-  isFirst: boolean;
+  isCurrent: boolean;
   isLast: boolean;
+  onToggleComplete: () => void;
 }) {
-  const current = isFirst;
+  const [showActivityForm, setShowActivityForm] = useState(false);
+  const [activityType, setActivityType] = useState<ActivityType>("project");
+  const [activityDescription, setActivityDescription] = useState("");
+  const [logging, setLogging] = useState(false);
+  const [skillScore, setSkillScore] = useState<{
+    practiced_points_total: number;
+    real_assessment_score: number;
+    final_skill_score: number;
+    score_source: string;
+  } | null>(null);
+
+  async function handleLogActivity() {
+    setLogging(true);
+    try {
+      const result = await apiPost<{
+        practiced_points_total: number;
+        real_assessment_score: number;
+        final_skill_score: number;
+        score_source: string;
+      }>("/progress/activity", {
+        step_id: step.step_id,
+        activity_type: activityType,
+        description: activityDescription || null,
+      });
+      setSkillScore(result);
+      setActivityDescription("");
+      setShowActivityForm(false);
+    } catch (err) {
+      console.error("Failed to log activity:", err);
+    } finally {
+      setLogging(false);
+    }
+  }
 
   return (
     <div className="relative flex gap-4 sm:gap-5">
       <div className="flex w-10 shrink-0 flex-col items-center">
-        <div
-          className={`relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-4 border-white shadow-sm ${
-            current ? "bg-brand-accent text-white ring-4 ring-blue-100" : "bg-blue-50 text-brand-accent"
+        <button
+          type="button"
+          onClick={onToggleComplete}
+          className={`relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-4 border-white shadow-sm transition ${
+            step.is_completed
+              ? "bg-emerald-500 text-white"
+              : isCurrent
+              ? "bg-brand-accent text-white ring-4 ring-blue-100"
+              : "bg-blue-50 text-brand-accent hover:bg-blue-100"
           }`}
+          title={step.is_completed ? "Mark as incomplete" : "Mark as complete"}
         >
-          {current ? <MapPin size={15} /> : <Circle size={12} />}
-        </div>
+          {step.is_completed ? (
+            <Check size={15} strokeWidth={3} />
+          ) : isCurrent ? (
+            <MapPin size={15} />
+          ) : (
+            <Circle size={12} />
+          )}
+        </button>
 
-        {!isLast && <div className="min-h-[110px] w-0.5 flex-1 bg-slate-100" />}
+        {!isLast && (
+          <div
+            className={`min-h-[110px] w-0.5 flex-1 ${
+              step.is_completed ? "bg-emerald-200" : "bg-slate-100"
+            }`}
+          />
+        )}
       </div>
 
       <div
         className={`mb-5 min-w-0 flex-1 rounded-2xl border p-5 transition-all sm:p-6 ${
-          current
+          step.is_completed
+            ? "border-emerald-100 bg-emerald-50/30"
+            : isCurrent
             ? "border-brand-accent bg-blue-50/40 shadow-lg shadow-blue-950/[0.05] ring-1 ring-brand-accent"
             : "border-slate-200 bg-white hover:border-blue-200 hover:shadow-md"
         }`}
@@ -463,7 +527,8 @@ function RoadmapStepCard({
                 Step {step.step_order}
               </span>
 
-              {current && <StatusBadge text="In progress" />}
+              {step.is_completed && <StatusBadge text="Completed" color="emerald" />}
+              {!step.is_completed && isCurrent && <StatusBadge text="In progress" color="blue" />}
             </div>
 
             <h3 className="mt-2 text-base font-bold text-brand-navy">{step.title}</h3>
@@ -475,10 +540,15 @@ function RoadmapStepCard({
             )}
           </div>
 
-          <div className="flex w-fit items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-500">
-            <Clock3 size={12} />
-            {current ? "In progress" : "Not started"}
-          </div>
+          <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-500">
+            <input
+              type="checkbox"
+              checked={step.is_completed}
+              onChange={onToggleComplete}
+              className="h-3.5 w-3.5 accent-brand-accent"
+            />
+            {step.is_completed ? "Completed" : "Mark complete"}
+          </label>
         </div>
 
         <p className="mt-4 max-w-2xl text-xs leading-5 text-slate-500">
@@ -497,29 +567,98 @@ function RoadmapStepCard({
             <ArrowRight size={12} />
           </a>
         )}
+
+        {/* =====================================================
+            ACTIVITY LOGGING — records real self-reported work
+            toward this skill. Capped at 80 total; only a real
+            assessment can push the score above that.
+        ===================================================== */}
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          {!showActivityForm ? (
+            <button
+              type="button"
+              onClick={() => setShowActivityForm(true)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 transition hover:text-brand-accent"
+            >
+              <Plus size={13} />
+              Log what you did for this skill
+            </button>
+          ) : (
+            <div className="space-y-2.5 rounded-xl border border-slate-100 bg-slate-50/60 p-3.5">
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.keys(ACTIVITY_LABELS) as ActivityType[]).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setActivityType(type)}
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-semibold transition ${
+                      activityType === type
+                        ? "bg-brand-accent text-white"
+                        : "bg-white text-slate-500 hover:bg-blue-50"
+                    }`}
+                  >
+                    {ACTIVITY_LABELS[type]}
+                  </button>
+                ))}
+              </div>
+
+              <textarea
+                value={activityDescription}
+                onChange={(e) => setActivityDescription(e.target.value)}
+                placeholder="Briefly describe what you did (optional)"
+                rows={2}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-brand-navy outline-none focus:border-brand-accent"
+              />
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleLogActivity}
+                  disabled={logging}
+                  className="rounded-lg bg-brand-accent px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-navy disabled:opacity-60"
+                >
+                  {logging ? "Logging..." : "Log activity"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowActivityForm(false)}
+                  className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {skillScore && (
+            <div className="mt-3 rounded-xl bg-blue-50/60 p-3 text-[11px] leading-5 text-slate-600">
+              <span className="font-semibold text-brand-navy">
+                {step.skill_name} score: {skillScore.final_skill_score}%
+              </span>{" "}
+              ({skillScore.score_source === "tested" ? "verified by assessment" : "from logged activity"})
+              {skillScore.score_source === "practiced" && (
+                <span className="mt-1 block text-slate-400">
+                  Self-reported activity caps at 80% — take the real assessment to reach 100%.
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-/**
- * =====================================================================
- * STATUS BADGE
- * =====================================================================
- */
-function StatusBadge({ text }: { text: string }) {
+function StatusBadge({ text, color }: { text: string; color: "emerald" | "blue" }) {
+  const styles =
+    color === "emerald" ? "bg-emerald-50 text-emerald-700" : "bg-blue-100 text-brand-accent";
   return (
-    <span className="rounded-full bg-blue-100 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-brand-accent">
+    <span className={`rounded-full px-2 py-1 text-[8px] font-bold uppercase tracking-wider ${styles}`}>
       {text}
     </span>
   );
 }
 
-/**
- * =====================================================================
- * SUMMARY CARD
- * =====================================================================
- */
 function SummaryCard({
   icon,
   title,
@@ -550,11 +689,6 @@ function SummaryCard({
   );
 }
 
-/**
- * =====================================================================
- * JOURNEY STEP
- * =====================================================================
- */
 function JourneyStep({
   icon,
   label,
