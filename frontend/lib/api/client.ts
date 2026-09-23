@@ -53,7 +53,6 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   if (!session) {
     throw new Error("Not authenticated.");
   }
-  console.log("🔑 ACCESS TOKEN:", session.access_token);
   return { Authorization: `Bearer ${session.access_token}` };
     
 }

@@ -49,6 +49,15 @@ import { apiPost } from "@/lib/api/client";
  *   100% would be meaningless: self-reported effort now has
  *   structure, a visible running score, and an honest ceiling below
  *   verified mastery.
+ * - A "Refresh roadmap" button now calls POST /roadmap/recalculate,
+ *   which removes any step for a skill the user has since mastered
+ *   (e.g. after retaking a real assessment) and recalculates
+ *   readiness. This is the fix for a known limitation: without it,
+ *   a roadmap would show stale advice ("learn SQL") forever, even
+ *   after the user proved they already know it. Recalculation is
+ *   pure backend math — NO Groq/AI call happens here, so clicking
+ *   this button costs nothing and is always safe to click, even
+ *   repeatedly, even if nothing has actually changed.
  * =====================================================================
  */
 
@@ -149,6 +158,34 @@ export default function RoadmapPage() {
       );
     } catch (err) {
       console.error("Failed to update step:", err);
+    }
+  }
+
+  /**
+   * -------------------------------------------------------------------
+   * REFRESH ROADMAP
+   * -------------------------------------------------------------------
+   * Calls POST /roadmap/recalculate, which removes any steps for
+   * skills the user has since mastered (e.g. after retaking an
+   * assessment) and recalculates readiness — fixing the "stale
+   * roadmap" issue where old advice sticks around after real
+   * progress has been made. Pure backend math, no AI call — safe
+   * to click anytime, even with no changes, at no extra cost.
+   */
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function refreshRoadmap() {
+    if (!data) return;
+    setRefreshing(true);
+    try {
+      const result = await apiPost<RoadmapData>("/roadmap/recalculate", {
+        roadmap_id: data.roadmap_id,
+      });
+      setData(result);
+    } catch (err) {
+      console.error("Failed to refresh roadmap:", err);
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -258,28 +295,43 @@ export default function RoadmapPage() {
               )}
             </div>
 
-            <div className="flex w-fit items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-brand-accent">
-                <Target size={19} />
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex w-fit items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-brand-accent">
+                  <Target size={19} />
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Overall readiness
+                  </p>
+                  <p className="mt-0.5 text-sm font-bold text-brand-navy">
+                    {data.readiness_percentage}%
+                  </p>
+                </div>
+
+                <div className="ml-2 border-l border-slate-100 pl-4">
+                  <p className="text-xl font-bold text-brand-accent">
+                    {data.steps.length}
+                  </p>
+                  <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                    Steps
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Overall readiness
-                </p>
-                <p className="mt-0.5 text-sm font-bold text-brand-navy">
-                  {data.readiness_percentage}%
-                </p>
-              </div>
-
-              <div className="ml-2 border-l border-slate-100 pl-4">
-                <p className="text-xl font-bold text-brand-accent">
-                  {data.steps.length}
-                </p>
-                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
-                  Steps
-                </p>
-              </div>
+              {/* REFRESH ROADMAP — re-checks skills against the
+                  roadmap's current steps, removing any that are now
+                  mastered. Pure backend math, no AI call, always
+                  safe/free to click. */}
+              <button
+                type="button"
+                onClick={refreshRoadmap}
+                disabled={refreshing}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-500 transition hover:border-blue-200 hover:text-brand-accent disabled:opacity-60"
+              >
+                {refreshing ? "Refreshing..." : "🔄 Refresh roadmap"}
+              </button>
             </div>
           </div>
 
