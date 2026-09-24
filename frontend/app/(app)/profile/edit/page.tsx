@@ -14,7 +14,7 @@ import {
   Target,
   UserRound,
 } from "lucide-react";
-import { apiGet, apiPut } from "@/lib/api/client";
+import { apiGet, apiPut, apiPost } from "@/lib/api/client";
 
 /**
  * =====================================================================
@@ -22,7 +22,7 @@ import { apiGet, apiPut } from "@/lib/api/client";
  * =====================================================================
  *
  * FILE:
- * frontend/app/profile/edit/page.tsx
+ * frontend/app/(app)/profile/edit/page.tsx
  *
  * PURPOSE:
  * Lets an existing user update their profile fields after initial
@@ -31,7 +31,7 @@ import { apiGet, apiPut } from "@/lib/api/client";
  * instead of POST — both already built and tested in Sprint 2.
  *
  * ---------------------------------------------------------------------
- * CONFIRMED SAFE, ISOLATED CHANGE
+ * CONFIRMED SAFE, ISOLATED CHANGE (profile fields)
  * ---------------------------------------------------------------------
  * None of these fields (education, experience_years, career_goal,
  * work_preference, industry_interest) are ever read by career
@@ -43,8 +43,22 @@ import { apiGet, apiPut } from "@/lib/api/client";
  * Email and password are deliberately NOT editable here — that
  * would require real auth flows (email re-verification, password
  * confirmation) that are out of scope given the project timeline.
+ *
+ * ---------------------------------------------------------------------
+ * ADD SKILLS (per supervisor feedback)
+ * ---------------------------------------------------------------------
+ * Lets a user add MORE skills after initial onboarding, reusing the
+ * same selection-only pattern and POST /profile/skills endpoint.
+ * A newly added skill starts as source='selected' (untested) — it
+ * has NO effect on matching/gap/roadmap until the user actually
+ * takes its real assessment (same rule as every skill in the
+ * system). Existing roadmaps stay frozen until "Refresh roadmap"
+ * is clicked, consistent with the rest of the app's design.
  * =====================================================================
  */
+
+type SkillOption = { id: number; name: string };
+type MySkill = { skill_id: number; skill_name: string; source: string | null };
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -59,6 +73,13 @@ export default function EditProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  // Skills — add-more UI
+  const [availableSkills, setAvailableSkills] = useState<SkillOption[]>([]);
+  const [mySkills, setMySkills] = useState<MySkill[]>([]);
+  const [newlySelectedIds, setNewlySelectedIds] = useState<number[]>([]);
+  const [skillsSaving, setSkillsSaving] = useState(false);
+  const [skillsMessage, setSkillsMessage] = useState<string | null>(null);
 
   /**
    * -------------------------------------------------------------------
@@ -93,7 +114,22 @@ export default function EditProfilePage() {
 
   /**
    * -------------------------------------------------------------------
-   * SAVE CHANGES
+   * LOAD SKILLS DATA — full catalog + user's current selections
+   * -------------------------------------------------------------------
+   */
+  useEffect(() => {
+    apiGet<{ skills: SkillOption[] }>("/skills")
+      .then((data) => setAvailableSkills(data.skills))
+      .catch(() => {});
+
+    apiGet<{ skills: MySkill[] }>("/skills/my-levels")
+      .then((data) => setMySkills(data.skills.filter((s) => s.source !== null)))
+      .catch(() => {});
+  }, []);
+
+  /**
+   * -------------------------------------------------------------------
+   * SAVE PROFILE CHANGES
    * -------------------------------------------------------------------
    */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -120,6 +156,40 @@ export default function EditProfilePage() {
     }
   }
 
+  /**
+   * -------------------------------------------------------------------
+   * ADD NEWLY SELECTED SKILLS
+   * -------------------------------------------------------------------
+   */
+  async function handleAddSkills() {
+    if (newlySelectedIds.length === 0) return;
+    setSkillsSaving(true);
+    setSkillsMessage(null);
+
+    try {
+      await apiPost("/profile/skills", { skill_ids: newlySelectedIds });
+      setSkillsMessage(
+        "Skills added! Visit the assessment page to test them — until then, they won't affect your matches."
+      );
+      setMySkills((current) => [
+        ...current,
+        ...newlySelectedIds.map((id) => {
+          const skill = availableSkills.find((s) => s.id === id);
+          return {
+            skill_id: id,
+            skill_name: skill?.name || "",
+            source: "selected",
+          };
+        }),
+      ]);
+      setNewlySelectedIds([]);
+    } catch (err) {
+      setSkillsMessage("Failed to add skills. Please try again.");
+    } finally {
+      setSkillsSaving(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f8faff]">
@@ -130,10 +200,7 @@ export default function EditProfilePage() {
 
   return (
     <div className="relative min-w-0 flex-1 overflow-hidden">
-      {/* HEADER */}
       <div className="mx-auto max-w-3xl px-6 py-10">
-
-
         <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-white px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-brand-accent shadow-sm">
           <Sparkles size={13} />
           Your profile
@@ -144,9 +211,9 @@ export default function EditProfilePage() {
         </h1>
 
         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
-          Update your background and goals. This doesn&apos;t affect your
-          assessed skills, career matches, or roadmap — those only ever
-          come from real skill assessments.
+          Update your background and goals. Profile fields don&apos;t affect
+          your assessed skills, career matches, or roadmap — those only
+          ever come from real skill assessments.
         </p>
 
         <form
@@ -230,6 +297,67 @@ export default function EditProfilePage() {
                   <option value="other">Other</option>
                 </select>
               </Field>
+            </div>
+
+            <div className="h-px bg-slate-100" />
+
+            <div>
+              <h3 className="mb-1 text-sm font-bold text-brand-navy">Your skills</h3>
+              <p className="mb-4 text-xs text-slate-400">
+                Currently selected:{" "}
+                {mySkills.length > 0
+                  ? mySkills.map((s) => s.skill_name).join(", ")
+                  : "None yet"}
+              </p>
+
+              <div className="flex flex-wrap gap-1.5">
+                {availableSkills
+                  .filter((s) => !mySkills.some((m) => m.skill_id === s.id))
+                  .map((skill) => (
+                    <button
+                      key={skill.id}
+                      type="button"
+                      onClick={() =>
+                        setNewlySelectedIds((current) =>
+                          current.includes(skill.id)
+                            ? current.filter((id) => id !== skill.id)
+                            : [...current, skill.id]
+                        )
+                      }
+                      className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold transition ${
+                        newlySelectedIds.includes(skill.id)
+                          ? "border-brand-accent bg-brand-accent text-white"
+                          : "border-blue-100 bg-white text-brand-accent hover:bg-blue-50"
+                      }`}
+                    >
+                      + {skill.name}
+                    </button>
+                  ))}
+              </div>
+
+              {availableSkills.length > 0 &&
+                availableSkills.every((s) => mySkills.some((m) => m.skill_id === s.id)) && (
+                  <p className="mt-2 text-xs text-slate-400">
+                    You&apos;ve already selected every available skill.
+                  </p>
+                )}
+
+              {newlySelectedIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleAddSkills}
+                  disabled={skillsSaving}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand-accent px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-blue-500/15 transition-all hover:bg-brand-navy disabled:opacity-60"
+                >
+                  {skillsSaving
+                    ? "Adding..."
+                    : `Add ${newlySelectedIds.length} skill${newlySelectedIds.length > 1 ? "s" : ""}`}
+                </button>
+              )}
+
+              {skillsMessage && (
+                <p className="mt-3 text-xs text-emerald-600">{skillsMessage}</p>
+              )}
             </div>
 
             {error && (
