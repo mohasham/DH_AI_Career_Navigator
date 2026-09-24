@@ -6,8 +6,6 @@ import Image from "next/image";
 import {
   ArrowRight,
   BrainCircuit,
-  Check,
-  Circle,
   Compass,
   Sparkles,
 } from "lucide-react";
@@ -21,23 +19,37 @@ import { apiGet } from "@/lib/api/client";
  * FILE:
  * frontend/app/assessment/page.tsx
  *
- * Lists every real skill, showing the user's current assessed level
- * (if any) so they can see what they've already proven through real
- * testing, and pick a skill to test/retest. This is the genuine
- * entry point the sidebar's "Assessment" link leads to — previously
- * there was no way to reach any skill besides Python through normal
- * navigation.
+ * Lists every real skill the user has selected, showing their
+ * current progress so they can see what they've proven and pick a
+ * skill to test. This is the genuine entry point the sidebar's
+ * "Assessment" link leads to.
  *
  * Design matches the rest of the app: branded header, navy/compass
  * background decoration, consistent card styling — same visual
  * language as /matches, /gap, /roadmap, /onboarding.
+ *
+ * DETAILED SCORE BREAKDOWN (per supervisor feedback):
+ * Each skill shows THREE separate numbers, sourced from
+ * GET /skills/my-levels-detailed:
+ * - "Assessment" — the real, quiz-based score alone (0 if never
+ *   tested)
+ * - "Logged activity" — the capped (max 80) sum of activity points
+ *   logged across all roadmap steps for that skill
+ * - "Total" — the final blended value actually used everywhere
+ *   else in the app (matching, gap analysis, roadmap) — the max of
+ *   the two above
+ * A progress bar beneath reflects the Total value, colored emerald
+ * once a real assessment exists ("tested"), amber while still only
+ * "practiced" (capped below 100).
  * =====================================================================
  */
 
 type SkillWithLevel = {
   skill_id: number;
   skill_name: string;
-  assessed_level: number | null;
+  real_assessment_score: number;
+  practiced_score: number;
+  total_score: number;
   source: string | null;
 };
 
@@ -47,13 +59,9 @@ export default function AssessmentPickerPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiGet<{ skills: SkillWithLevel[] }>("/skills/my-levels")
+    apiGet<{ skills: SkillWithLevel[] }>("/skills/my-levels-detailed")
       .then((data) => {
-        // Only show skills the user actually selected during
-        // onboarding (source is not null) — skills they never
-        // claimed to have don't need to be assessed.
-        const relevantSkills = data.skills.filter((s) => s.source !== null);
-        setSkills(relevantSkills);
+        setSkills(data.skills);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -153,7 +161,6 @@ export default function AssessmentPickerPage() {
                     disabled={tested}
                     onClick={() => {
                       if (tested) return;
-                      console.log("Navigating to:", `/assessment/${skill.skill_name.toLowerCase()}`)
                       router.push(`/assessment/${skill.skill_name.toLowerCase()}`);
                     }}
                     className={`flex w-full items-center justify-between rounded-2xl border p-5 text-left shadow-sm transition ${tested
@@ -171,31 +178,45 @@ export default function AssessmentPickerPage() {
                           {skill.skill_name}
                         </h3>
 
-                        <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
-                          {skill.assessed_level !== null ? (
-                            <>
-                              {tested ? (
-                                <Check size={12} className="text-emerald-500" />
-                              ) : (
-                                <Circle size={12} className="text-amber-500" />
-                              )}
-                              <span
-                                className={
-                                  tested
-                                    ? "font-semibold text-emerald-600"
-                                    : "font-semibold text-amber-600"
-                                }
-                              >
-                                {skill.assessed_level}%
-                              </span>
-                              {tested
-                                ? "— verified by assessment"
-                                : "— from logged activity, capped at 80%"}
-                            </>
-                          ) : (
-                            "Not assessed yet"
-                          )}
-                        </p>
+                        <div className="mt-1.5 flex-1 space-y-1.5">
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+                            <span>
+                              Assessment:{" "}
+                              <strong className="text-emerald-600">
+                                {skill.real_assessment_score}%
+                              </strong>
+                            </span>
+                            <span>
+                              Logged activity:{" "}
+                              <strong className="text-amber-600">
+                                {skill.practiced_score}%
+                              </strong>
+                            </span>
+                            <span>
+                              Total:{" "}
+                              <strong className="text-brand-navy">
+                                {skill.total_score}%
+                              </strong>
+                            </span>
+                          </div>
+
+                          {/* Progress bar — reflects the Total value
+                              (the same blended number used everywhere
+                              else in the app for matching/gap/roadmap).
+                              Emerald once verified by a real
+                              assessment, amber while still only
+                              "practiced". */}
+                          <div className="h-1.5 w-40 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                skill.source === "tested"
+                                  ? "bg-emerald-500"
+                                  : "bg-amber-500"
+                              }`}
+                              style={{ width: `${skill.total_score}%` }}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
 

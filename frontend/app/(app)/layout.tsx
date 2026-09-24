@@ -48,15 +48,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [careerId, setCareerId] = useState<number | null>(null);
 
-  useEffect(() => {
-    apiGet<{ has_roadmap: boolean; career_id?: number }>("/dashboard/summary")
-      .then((data) => {
-        if (data.has_roadmap && data.career_id) {
-          setCareerId(data.career_id);
-        }
-      })
-      .catch(() => { });
-  }, []);
+useEffect(() => {
+  apiGet<{ has_roadmap: boolean; career_id?: number }>("/dashboard/summary")
+    .then((data) => {
+      if (data.has_roadmap && data.career_id) {
+        setCareerId(data.career_id);
+      }
+    })
+    .catch(() => {});
+}, []);
 
   // Guard: if the user hasn't completed onboarding yet (no profile
   // row exists), redirect them there before showing any dashboard-
@@ -86,17 +86,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           (s) => s.source !== null && s.source !== "tested"
         );
 
-        // TEMPORARY DEBUG LOGS — remove once the redirect issue is
-        // confirmed fixed.
-        console.log("=== GUARD CHECK ===");
-        console.log("Current pathname:", JSON.stringify(pathname));
-        console.log("Skills data:", data.skills);
-        console.log("hasUntestedSelected:", hasUntestedSelected);
-        console.log(
-          "Will redirect?",
-          hasUntestedSelected && pathname !== "/assessment"
-        );
-
         // Only redirect if there are untested skills AND we're not
         // already on the assessment picker page — otherwise this
         // would redirect the user away from the very page meant to
@@ -105,8 +94,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           router.push("/assessment");
         }
       })
-      .catch((err) => {
-        console.log("=== GUARD CATCH (redirecting to onboarding) ===", err);
+      .catch(() => {
         router.push("/onboarding");
       });
   }, [pathname]);
@@ -122,12 +110,40 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/");
-    router.refresh();
+async function handleLogout() {
+  await supabase.auth.signOut();
+  router.push("/");
+  router.refresh();
+}
+
+// Fetches the current career fresh, on click, rather than relying
+// on `careerId` state that might not have finished loading yet on
+// a fast click right after page load — avoids a race condition
+// where clicking too quickly would incorrectly fall back to
+// /matches even though a roadmap genuinely exists.
+async function navigateToCareerPage(basePath: string) {
+  if (careerId) {
+    router.push(`${basePath}?career=${careerId}`);
+    return;
   }
 
+  try {
+const data = await apiGet<{ has_roadmap: boolean; career_id?: number }>(
+  "/dashboard/summary"
+);
+console.log("has_roadmap:", data.has_roadmap, "career_id:", data.career_id);
+    console.log("Fresh fetch result:", data);
+    if (data.has_roadmap && data.career_id) {
+      setCareerId(data.career_id);
+      router.push(`${basePath}?career=${data.career_id}`);
+      return;
+    }
+  } catch {
+    // fall through to /matches below
+  }
+
+  router.push("/matches");
+}
   const firstInitial = userName.charAt(0).toUpperCase();
 
   return (
@@ -217,16 +233,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               label="Career Matches"
               onClick={() => router.push("/matches")}
             />
-            <SidebarItem
-              icon={<BarChart3 size={17} />}
-              label="Gap Analysis"
-              onClick={() => router.push(careerId ? `/gap?career=${careerId}` : "/matches")}
-            />
-            <SidebarItem
-              icon={<Route size={17} />}
-              label="Roadmap"
-              onClick={() => router.push(careerId ? `/roadmap?career=${careerId}` : "/matches")}
-            />
+<SidebarItem
+  icon={<BarChart3 size={17} />}
+  label="Gap Analysis"
+  onClick={() => navigateToCareerPage("/gap")}
+/>
+<SidebarItem
+  icon={<Route size={17} />}
+  label="Roadmap"
+  onClick={() => navigateToCareerPage("/roadmap")}
+/>
             <SidebarItem
               icon={<MessageCircle size={17} />}
               label="AI Chat"
