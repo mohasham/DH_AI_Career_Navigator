@@ -74,31 +74,34 @@ useEffect(() => {
   // once and this check would never re-fire when the user clicks
   // between sidebar links, letting them slip past the gate after
   // the first check.
-  useEffect(() => {
-    apiGet("/profile")
-      .then(() => {
-        return apiGet<{
-          skills: { skill_name: string; source: string | null }[];
-        }>("/skills/my-levels");
-      })
-      .then((data) => {
-        const hasUntestedSelected = data.skills.some(
-          (s) => s.source !== null && s.source !== "tested"
-        );
+useEffect(() => {
+  apiGet("/profile")
+    .then(() => {
+      return apiGet<{
+        skills: { skill_name: string; source: string | null }[];
+      }>("/skills/my-levels");
+    })
+    .then((data) => {
+      const selectedSkills = data.skills.filter((s) => s.source !== null);
+      const hasAnyTested = selectedSkills.some((s) => s.source === "tested");
+      const hasUntestedSelected = selectedSkills.some((s) => s.source !== "tested");
 
-        // Only redirect if there are untested skills AND we're not
-        // already on the assessment picker page — otherwise this
-        // would redirect the user away from the very page meant to
-        // let them complete their remaining assessments.
-        if (hasUntestedSelected && pathname !== "/assessment") {
-          router.push("/assessment");
-        }
-      })
-      .catch(() => {
-        router.push("/onboarding");
-      });
-  }, [pathname]);
+      // Only enforce the strict "must test everything first" gate
+      // during INITIAL onboarding — i.e. the user has never tested
+      // ANY skill yet. Once they've completed onboarding once
+      // (at least one tested skill exists), adding more skills
+      // later (e.g. via edit profile) should NOT lock them out of
+      // browsing — they can test new skills whenever they choose.
+      const isStillInInitialOnboarding = !hasAnyTested && hasUntestedSelected;
 
+      if (isStillInInitialOnboarding && pathname !== "/assessment") {
+        router.push("/assessment");
+      }
+    })
+    .catch(() => {
+      router.push("/onboarding");
+    });
+}, [pathname]);
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       const name =
