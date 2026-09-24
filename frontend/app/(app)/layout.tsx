@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   BarChart3,
   BrainCircuit,
@@ -40,6 +40,7 @@ import { apiGet } from "@/lib/api/client";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const supabase = createClient();
 
   const [userName, setUserName] = useState("there");
@@ -48,24 +49,67 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [careerId, setCareerId] = useState<number | null>(null);
 
   useEffect(() => {
-  apiGet<{ has_roadmap: boolean; career_id?: number }>("/dashboard/summary")
-    .then((data) => {
-      if (data.has_roadmap && data.career_id) {
-        setCareerId(data.career_id);
-      }
-    })
-    .catch(() => {});
-}, []);
+    apiGet<{ has_roadmap: boolean; career_id?: number }>("/dashboard/summary")
+      .then((data) => {
+        if (data.has_roadmap && data.career_id) {
+          setCareerId(data.career_id);
+        }
+      })
+      .catch(() => { });
+  }, []);
 
-// Guard: if the user hasn't completed onboarding yet (no profile
-// row exists), redirect them there before showing any dashboard-
-// style pages. GET /profile returns a 404 if no profile exists,
-// which we use as the signal here.
-useEffect(() => {
-  apiGet("/profile").catch(() => {
-    router.push("/onboarding");
-  });
-}, []);
+  // Guard: if the user hasn't completed onboarding yet (no profile
+  // row exists), redirect them there before showing any dashboard-
+  // style pages. GET /profile returns a 404 if no profile exists,
+  // which we use as the signal here.
+  //
+  // SECOND GUARD: even with a profile, if the user still has
+  // selected-but-untested skills, redirect them to the assessment
+  // picker instead — they must prove every skill they claimed
+  // before browsing matches/gap/roadmap/dashboard, ensuring those
+  // pages always reflect real, complete assessed data.
+  //
+  // Depends on `pathname` (not just []) so this re-runs on EVERY
+  // navigation within (app) — without this, the layout only mounts
+  // once and this check would never re-fire when the user clicks
+  // between sidebar links, letting them slip past the gate after
+  // the first check.
+  useEffect(() => {
+    apiGet("/profile")
+      .then(() => {
+        return apiGet<{
+          skills: { skill_name: string; source: string | null }[];
+        }>("/skills/my-levels");
+      })
+      .then((data) => {
+        const hasUntestedSelected = data.skills.some(
+          (s) => s.source !== null && s.source !== "tested"
+        );
+
+        // TEMPORARY DEBUG LOGS — remove once the redirect issue is
+        // confirmed fixed.
+        console.log("=== GUARD CHECK ===");
+        console.log("Current pathname:", JSON.stringify(pathname));
+        console.log("Skills data:", data.skills);
+        console.log("hasUntestedSelected:", hasUntestedSelected);
+        console.log(
+          "Will redirect?",
+          hasUntestedSelected && pathname !== "/assessment"
+        );
+
+        // Only redirect if there are untested skills AND we're not
+        // already on the assessment picker page — otherwise this
+        // would redirect the user away from the very page meant to
+        // let them complete their remaining assessments.
+        if (hasUntestedSelected && pathname !== "/assessment") {
+          router.push("/assessment");
+        }
+      })
+      .catch((err) => {
+        console.log("=== GUARD CATCH (redirecting to onboarding) ===", err);
+        router.push("/onboarding");
+      });
+  }, [pathname]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -173,16 +217,16 @@ useEffect(() => {
               label="Career Matches"
               onClick={() => router.push("/matches")}
             />
-<SidebarItem
-  icon={<BarChart3 size={17} />}
-  label="Gap Analysis"
-  onClick={() => router.push(careerId ? `/gap?career=${careerId}` : "/matches")}
-/>
-<SidebarItem
-  icon={<Route size={17} />}
-  label="Roadmap"
-  onClick={() => router.push(careerId ? `/roadmap?career=${careerId}` : "/matches")}
-/>
+            <SidebarItem
+              icon={<BarChart3 size={17} />}
+              label="Gap Analysis"
+              onClick={() => router.push(careerId ? `/gap?career=${careerId}` : "/matches")}
+            />
+            <SidebarItem
+              icon={<Route size={17} />}
+              label="Roadmap"
+              onClick={() => router.push(careerId ? `/roadmap?career=${careerId}` : "/matches")}
+            />
             <SidebarItem
               icon={<MessageCircle size={17} />}
               label="AI Chat"

@@ -13,7 +13,6 @@ import {
   GraduationCap,
   Laptop,
   MapPin,
-  Plus,
   Route,
   Sparkles,
   Target,
@@ -51,25 +50,31 @@ import { apiGet, apiPost } from "@/lib/api/client";
  * required by the backend's ProfileCreate schema, so this page fetches
  * it via useUser-style logic and includes it in the POST body.
  *
- * SKILLS — free-text entry, exactly like the original static version:
- * a user can type ANY skill, including ones not in our seeded catalog
- * (e.g. "Next.js", "Docker") — there is no restriction. Real skills
- * from GET /skills are shown as small clickable "+ SkillName"
- * suggestion pills ABOVE the input purely as a convenient shortcut,
- * not a requirement — clicking one just adds it instantly, but
- * typing anything else works exactly the same as before. This
- * profile field is deliberately informational/self-descriptive only;
- * it is NOT what drives assessment or matching (that only ever comes
- * from the real assessment flow in Sprint 3, or the capped
- * activity-logging system in Sprint 6), so restricting it to a
- * fixed catalog would be more limiting than useful. Persistence to
- * the backend is still deliberately deferred — this stays local UI
- * state. The section starts empty — no pre-filled assumptions about
- * what the user already knows.
+ * SKILLS — SELECTION-ONLY now, no free-text entry. A user can only
+ * pick from REAL skills fetched via GET /skills — this is a
+ * deliberate change from the earlier free-text version. Letting
+ * users type arbitrary skill names created orphaned data: a typed
+ * skill like "Kubernetes" would have no career_skills mapping to
+ * any career (which requires deliberate, curated decisions about
+ * required levels per career) and no assessment questions, so it
+ * could never actually affect matching, gap analysis, or be
+ * meaningfully tested — a false impression of functionality.
  *
- * Redirects to /assessment/python on success.
+ * Selected skills ARE now persisted — via POST /profile/skills on
+ * submit, saved as user_skills rows with source='selected' and
+ * assessed_level=0 (claimed but not yet verified). This is what
+ * powers the /assessment picker page showing only the user's
+ * selected skills, and gates "Continue to career matches" until
+ * all of them are actually tested.
+ *
+ * Redirects to /assessment on success.
  * =====================================================================
  */
+
+type SkillOption = {
+  id: number;
+  name: string;
+};
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -99,28 +104,24 @@ export default function OnboardingPage() {
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Skills are stored as an array because the user can add/remove them.
-   * Starts empty — no pre-filled placeholder assumptions about what
-   * the user already knows. NOTE: intentionally NOT sent to the
-   * backend on submit — see file header comment for why.
+   * Selected skill IDs — selection-only, no free-text. Starts empty —
+   * no pre-filled assumptions about what the user already knows.
+   * Persisted to the backend on submit via POST /profile/skills.
    */
-  const [skills, setSkills] = useState<string[]>([]);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<number[]>([]);
 
-  const [skillInput, setSkillInput] = useState("");
-
-  // Real skills fetched from the database — used only to render
-  // clickable suggestion pills above the input, as a convenient
-  // shortcut. Does NOT restrict what the user can type/add.
-  const [availableSkills, setAvailableSkills] = useState<string[]>([]);
+  // Real skills fetched from the database — the ONLY source of
+  // selectable skills now (no free-text alternative).
+  const [availableSkills, setAvailableSkills] = useState<SkillOption[]>([]);
 
   useEffect(() => {
-    apiGet<{ skills: { id: number; name: string }[] }>("/skills")
+    apiGet<{ skills: SkillOption[] }>("/skills")
       .then((data) => {
-        setAvailableSkills(data.skills.map((s) => s.name));
+        setAvailableSkills(data.skills);
       })
       .catch(() => {
-        // Fail silently — if this fails, no suggestion pills render,
-        // but free-text typing still works fine either way.
+        // Fail silently — if this fails, no skills render to pick
+        // from, but the rest of the form still works fine.
       });
   }, []);
 
@@ -144,78 +145,37 @@ export default function OnboardingPage() {
 
   /**
    * -------------------------------------------------------------------
-   * ADD SKILL (via typing + Add button, or Enter key)
+   * TOGGLE SKILL SELECTION
    * -------------------------------------------------------------------
-   *
-   * Adds whatever the user typed — no restriction to a fixed skill
-   * catalog. We still:
-   * - remove surrounding spaces
-   * - prevent empty skills
-   * - prevent duplicate skills
+   * Clicking a real skill pill adds it if not already selected, or
+   * removes it if it is — a simple toggle, since selection is now
+   * the only interaction (no typing).
    */
-
-  function addSkill() {
-    const cleanedSkill = skillInput.trim();
-
-    if (!cleanedSkill) return;
-
-    const alreadyExists = skills.some(
-      (skill) => skill.toLowerCase() === cleanedSkill.toLowerCase()
-    );
-
-    if (alreadyExists) {
-      setSkillInput("");
-      return;
-    }
-
-    setSkills((currentSkills) => [...currentSkills, cleanedSkill]);
-    setSkillInput("");
-  }
-
-  /**
-   * -------------------------------------------------------------------
-   * ADD SKILL VIA SUGGESTION PILL (instant, one click)
-   * -------------------------------------------------------------------
-   */
-
-  function addSkillDirectly(skillName: string) {
-    setSkills((current) => [...current, skillName]);
-  }
-
-  /**
-   * -------------------------------------------------------------------
-   * REMOVE SKILL
-   * -------------------------------------------------------------------
-   */
-
-  function removeSkill(skillToRemove: string) {
-    setSkills((currentSkills) =>
-      currentSkills.filter((skill) => skill !== skillToRemove)
+  function toggleSkill(skillId: number) {
+    setSelectedSkillIds((current) =>
+      current.includes(skillId)
+        ? current.filter((id) => id !== skillId)
+        : [...current, skillId]
     );
   }
 
   /**
    * -------------------------------------------------------------------
-   * ALLOW ENTER TO ADD A SKILL
+   * REMOVE SKILL (from the selected chips list directly)
    * -------------------------------------------------------------------
    */
-
-  function handleSkillKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      addSkill();
-    }
+  function removeSkill(skillId: number) {
+    setSelectedSkillIds((current) => current.filter((id) => id !== skillId));
   }
 
   /**
    * -------------------------------------------------------------------
    * FORM SUBMIT
    * -------------------------------------------------------------------
-   * Sends the profile fields the backend actually accepts to
-   * POST /profile, using the shared apiPost helper (which handles
-   * attaching the user's auth token automatically — see
-   * lib/api/client.ts). Skills are deliberately excluded from this
-   * request; see the file header comment for why.
+   * Sends the profile fields to POST /profile, then, if any skills
+   * were selected, sends those to POST /profile/skills separately —
+   * two calls, since they're conceptually distinct actions (profile
+   * info vs. skill claims), even though they happen together here.
    */
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -228,6 +188,15 @@ export default function OnboardingPage() {
     // backend would reject anyway.
     if (!fullName) {
       setError("We couldn't find your name. Please try logging in again.");
+      return;
+    }
+
+    // At least one skill is required — without it, the user would
+    // hit a dead end on the assessment picker page (an empty list
+    // with nothing to click), since the entire assessment/matching
+    // pipeline depends on having at least one selected skill.
+    if (selectedSkillIds.length === 0) {
+      setError("Please select at least one skill to continue.");
       return;
     }
 
@@ -245,10 +214,14 @@ export default function OnboardingPage() {
         industry_interest: industryInterest || null,
       });
 
-// Profile saved successfully — move to the next onboarding
-// stage: the skill-picker page, where the user chooses which
-// skill to assess first.
-      router.push("/assessment");
+if (selectedSkillIds.length > 0) {
+  await apiPost("/profile/skills", { skill_ids: selectedSkillIds });
+}
+
+// Go directly into the first selected skill's quiz — no picker
+// page, no sidebar, straight into the assessment flow.
+const firstSkill = selectedSkills[0];
+router.push(`/assessment/${firstSkill.name.toLowerCase()}`);
     } catch (err) {
       setError(
         err instanceof Error
@@ -259,6 +232,10 @@ export default function OnboardingPage() {
       setSaving(false);
     }
   }
+
+  const selectedSkills = availableSkills.filter((s) =>
+    selectedSkillIds.includes(s.id)
+  );
 
   return (
     <main className="min-h-screen bg-[#f8faff] text-brand-ink">
@@ -470,71 +447,54 @@ export default function OnboardingPage() {
 
                 <div className="h-px bg-slate-100" />
 
-                {/* SECTION 3 — SKILLS (free-text, same as original;
-                    real skill names shown as optional clickable
-                    suggestions above the input, not a restriction) */}
+                {/* SECTION 3 — SKILLS (selection-only, no free-text —
+                    only real skills from GET /skills can be chosen) */}
                 <FormSection
                   icon={<Sparkles size={17} />}
                   title="Your current skills"
-                  description="Add the skills you already have. You'll assess them next."
+                  description="Select the skills you already have. You'll assess each one next."
                 >
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 transition focus-within:border-blue-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-50">
-                    {skills.length > 0 && (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                    {selectedSkills.length > 0 && (
                       <div className="mb-4 flex flex-wrap gap-2">
-                        {skills.map((skill) => (
+                        {selectedSkills.map((skill) => (
                           <SkillTag
-                            key={skill}
-                            skill={skill}
-                            onRemove={() => removeSkill(skill)}
+                            key={skill.id}
+                            skill={skill.name}
+                            onRemove={() => removeSkill(skill.id)}
                           />
                         ))}
                       </div>
                     )}
 
-                    {/* Real skills shown as optional quick-pick
-                        suggestion pills — a convenient shortcut,
-                        never a restriction. Typing anything else in
-                        the input below still works exactly the same. */}
-                    {availableSkills.length > 0 && (
-                      <div className="mb-3 flex flex-wrap gap-1.5">
-                        {availableSkills
-                          .filter((name) => !skills.includes(name))
-                          .map((name) => (
-                            <button
-                              key={name}
-                              type="button"
-                              onClick={() => addSkillDirectly(name)}
-                              className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-semibold text-brand-accent transition hover:bg-blue-50"
-                            >
-                              + {name}
-                            </button>
-                          ))}
-                      </div>
-                    )}
-
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={skillInput}
-                        onChange={(event) => setSkillInput(event.target.value)}
-                        onKeyDown={handleSkillKeyDown}
-                        placeholder="Type a skill..."
-                        className="min-w-0 flex-1 bg-transparent px-1 py-2 text-sm text-brand-navy outline-none placeholder:text-slate-400"
-                      />
-                      <button
-                        type="button"
-                        onClick={addSkill}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs font-semibold text-brand-accent shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
-                      >
-                        <Plus size={14} />
-                        Add
-                      </button>
+                    {/* Real skills only — clicking toggles selection.
+                        No free-text input; this is the sole way to
+                        add a skill now. */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {availableSkills
+                        .filter((s) => !selectedSkillIds.includes(s.id))
+                        .map((skill) => (
+                          <button
+                            key={skill.id}
+                            type="button"
+                            onClick={() => toggleSkill(skill.id)}
+                            className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-semibold text-brand-accent transition hover:bg-blue-50"
+                          >
+                            + {skill.name}
+                          </button>
+                        ))}
                     </div>
+
+                    {availableSkills.length === 0 && (
+                      <p className="text-xs text-slate-400">
+                        Loading available skills...
+                      </p>
+                    )}
                   </div>
 
                   <p className="flex items-center gap-1.5 text-xs text-slate-400">
                     <Sparkles size={12} className="text-brand-accent" />
-                    Add technical and professional skills you feel comfortable using.
+                    You&apos;ll take a real assessment for each skill you select.
                   </p>
                 </FormSection>
 
@@ -656,27 +616,27 @@ export default function OnboardingPage() {
 
                 <div className="mt-5 border-t border-slate-100 pt-4">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Skills added
+                    Skills selected
                   </p>
 
-                  {skills.length > 0 ? (
+                  {selectedSkills.length > 0 ? (
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                      {skills.slice(0, 5).map((skill) => (
+                      {selectedSkills.slice(0, 5).map((skill) => (
                         <span
-                          key={skill}
+                          key={skill.id}
                           className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-brand-accent"
                         >
-                          {skill}
+                          {skill.name}
                         </span>
                       ))}
-                      {skills.length > 5 && (
+                      {selectedSkills.length > 5 && (
                         <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500">
-                          +{skills.length - 5}
+                          +{selectedSkills.length - 5}
                         </span>
                       )}
                     </div>
                   ) : (
-                    <p className="mt-2 text-xs text-slate-400">Add your first skill.</p>
+                    <p className="mt-2 text-xs text-slate-400">Select your first skill.</p>
                   )}
                 </div>
               </div>
@@ -758,20 +718,18 @@ function ProgressStep({
   return (
     <div className="relative z-10 flex flex-col items-center text-center">
       <div
-        className={`flex h-10 w-10 items-center justify-center rounded-full border-4 border-white text-xs shadow-sm ${
-          completed
+        className={`flex h-10 w-10 items-center justify-center rounded-full border-4 border-white text-xs shadow-sm ${completed
             ? "bg-emerald-500 text-white"
             : active
-            ? "bg-brand-accent text-white"
-            : "bg-slate-100 text-slate-400"
-        }`}
+              ? "bg-brand-accent text-white"
+              : "bg-slate-100 text-slate-400"
+          }`}
       >
         {icon}
       </div>
       <p
-        className={`mt-2 text-xs font-semibold ${
-          active ? "text-brand-accent" : completed ? "text-emerald-600" : "text-slate-400"
-        }`}
+        className={`mt-2 text-xs font-semibold ${active ? "text-brand-accent" : completed ? "text-emerald-600" : "text-slate-400"
+          }`}
       >
         {label}
       </p>
@@ -884,11 +842,10 @@ function MapPoint({
   return (
     <div className="flex items-center gap-3">
       <div
-        className={`flex h-8 w-8 items-center justify-center rounded-full border ${
-          active
+        className={`flex h-8 w-8 items-center justify-center rounded-full border ${active
             ? "border-white/30 bg-white text-brand-accent"
             : "border-white/10 bg-white/5 text-blue-200"
-        }`}
+          }`}
       >
         {icon}
       </div>

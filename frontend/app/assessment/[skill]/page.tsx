@@ -35,16 +35,24 @@ import { apiGet, apiPost } from "@/lib/api/client";
  * taking an assessment is a focused, quiz-like task, not dashboard
  * browsing, so it keeps its own standalone header rather than the
  * shared sidebar layout. The skill-PICKER page (/assessment, listing
- * all 6 skills) stays inside (app) since that IS dashboard-like
- * browsing.
+ * the user's selected skills) stays inside (app) since that IS
+ * dashboard-like browsing.
  *
  * ---------------------------------------------------------------------
  * RESULTS SCREEN (ACN-60)
  * ---------------------------------------------------------------------
  * After a successful POST /assessment/submit, we no longer redirect
  * immediately — we store the response in `result` state and render
- * a dedicated results screen showing the user's real score, before
- * they choose to continue toward career matching (Sprint 4).
+ * a dedicated results screen showing the user's real score.
+ *
+ * GATING "CONTINUE TO CAREER MATCHES":
+ * After a result comes back, we check GET /skills/my-levels to see
+ * if any of the user's SELECTED skills (source !== null) are still
+ * untested. If so, we show "Assess next skill" instead of "Continue
+ * to career matches" — the user must finish everything they claimed
+ * to know during onboarding before seeing matches, ensuring those
+ * matches are based on real, complete assessed data rather than
+ * partial/unverified claims.
  * =====================================================================
  */
 
@@ -59,8 +67,10 @@ export default function AssessmentPage() {
   const router = useRouter();
   const params = useParams();
   const skillParam = (params.skill as string) || "";
-  const skillDisplayName =
-    skillParam.charAt(0).toUpperCase() + skillParam.slice(1);
+  const skillDisplayName = decodeURIComponent(skillParam)
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,6 +89,11 @@ export default function AssessmentPage() {
     correct_count: number;
     total_questions: number;
   } | null>(null);
+
+  // Whether the user still has OTHER selected skills left untested —
+  // determines whether the results screen shows "Assess next skill"
+  // or unlocks "Continue to career matches".
+  const [hasMoreSkills, setHasMoreSkills] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!skillParam) return;
@@ -99,8 +114,47 @@ export default function AssessmentPage() {
         );
         setLoading(false);
       });
-  }, [skillParam]);
 
+    // Reset per-skill state whenever the URL's skill changes —
+    // without this, Next.js reuses this component instance across
+    // navigations to a new [skill] segment, so old `result` and
+    // `hasMoreSkills` values from the PREVIOUS skill would briefly
+    // leak into the new page before this effect's data loads,
+    // causing a flash of the old results screen/button.
+    setCurrentQuestionIndex(0);
+    setAnswers({});
+    setResult(null);
+    setHasMoreSkills(null);
+    setNextSkillName(null);
+  }, [skillParam]);
+  const [nextSkillName, setNextSkillName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!result) return;
+
+    // Small delay before checking — ensures the just-submitted
+    // assessment's database write has fully settled before we read
+    // it back, avoiding a race condition where this check might run
+    // against slightly stale data.
+    const timer = setTimeout(() => {
+      apiGet<{
+        skills: { skill_name: string; source: string | null }[];
+      }>("/skills/my-levels")
+        .then((data) => {
+          const nextUntested = data.skills.find(
+            (s) => s.source !== null && s.source !== "tested"
+          );
+          setNextSkillName(nextUntested ? nextUntested.skill_name : null);
+          setHasMoreSkills(!!nextUntested);
+        })
+        .catch(() => {
+          setHasMoreSkills(true);
+          setNextSkillName(null);
+        });
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [result]);
   const currentQuestion = questions[currentQuestionIndex];
   const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined;
   const totalQuestions = questions.length;
@@ -194,8 +248,7 @@ export default function AssessmentPage() {
   }
 
   // ---------------------------------------------------------------
-  // RESULTS SCREEN (ACN-60) — shown after a successful submission,
-  // before the user continues on toward career matching (Sprint 4).
+  // RESULTS SCREEN (ACN-60) — shown after a successful submission.
   // This must come AFTER the loading/error checks above, but BEFORE
   // the main question UI below, so it only takes over once a real
   // result actually exists.
@@ -212,23 +265,37 @@ export default function AssessmentPage() {
             {skillDisplayName} Assessment Complete
           </p>
 
-            <h1 className="animate-score-pop mt-2 text-4xl font-bold text-brand-navy">
+          <h1 className="animate-score-pop mt-2 text-4xl font-bold text-brand-navy">
             {result.score}%
-            </h1>
+          </h1>
 
           <p className="mt-2 text-sm text-slate-500">
             You answered {result.correct_count} of {result.total_questions}{" "}
             questions correctly.
           </p>
-
-          <button
-            type="button"
-            onClick={() => router.push("/matches")}
-            className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-accent px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/15 transition-all hover:bg-brand-navy"
-          >
-            Continue to career matches
-            <ArrowRight size={15} />
-          </button>
+          {hasMoreSkills === null ? (
+            <div className="mt-7 flex w-full items-center justify-center rounded-xl bg-slate-100 px-6 py-3 text-sm font-semibold text-slate-400">
+              Checking your progress...
+            </div>
+          ) : hasMoreSkills && nextSkillName ? (
+            <button
+              type="button"
+              onClick={() => router.push(`/assessment/${nextSkillName.toLowerCase()}`)}
+              className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-accent px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/15 transition-all hover:bg-brand-navy"
+            >
+              Assess next skill: {nextSkillName}
+              <ArrowRight size={15} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => router.push("/matches")}
+              className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-accent px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/15 transition-all hover:bg-brand-navy"
+            >
+              Continue to career matches
+              <ArrowRight size={15} />
+            </button>
+          )}
         </div>
       </main>
     );
@@ -393,20 +460,18 @@ export default function AssessmentPage() {
                         onClick={() => selectAnswer(option)}
                         className={`
                           group flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-all duration-200 sm:p-5
-                          ${
-                            isSelected
-                              ? "border-brand-accent bg-blue-50/70 shadow-md shadow-blue-950/[0.05] ring-1 ring-brand-accent"
-                              : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50/30 hover:shadow-md"
+                          ${isSelected
+                            ? "border-brand-accent bg-blue-50/70 shadow-md shadow-blue-950/[0.05] ring-1 ring-brand-accent"
+                            : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50/30 hover:shadow-md"
                           }
                         `}
                       >
                         <div
                           className={`
                             flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition
-                            ${
-                              isSelected
-                                ? "border-brand-accent bg-brand-accent"
-                                : "border-slate-300 bg-white group-hover:border-blue-300"
+                            ${isSelected
+                              ? "border-brand-accent bg-brand-accent"
+                              : "border-slate-300 bg-white group-hover:border-blue-300"
                             }
                           `}
                         >
@@ -416,9 +481,8 @@ export default function AssessmentPage() {
                         </div>
 
                         <span
-                          className={`flex-1 text-sm font-medium leading-6 ${
-                            isSelected ? "text-brand-navy" : "text-slate-600"
-                          }`}
+                          className={`flex-1 text-sm font-medium leading-6 ${isSelected ? "text-brand-navy" : "text-slate-600"
+                            }`}
                         >
                           {option}
                         </span>
@@ -426,10 +490,9 @@ export default function AssessmentPage() {
                         <span
                           className={`
                             flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold transition
-                            ${
-                              isSelected
-                                ? "bg-brand-accent text-white"
-                                : "bg-slate-50 text-slate-400 group-hover:bg-blue-50 group-hover:text-brand-accent"
+                            ${isSelected
+                              ? "bg-brand-accent text-white"
+                              : "bg-slate-50 text-slate-400 group-hover:bg-blue-50 group-hover:text-brand-accent"
                             }
                           `}
                         >
@@ -470,8 +533,8 @@ export default function AssessmentPage() {
                   {submitting
                     ? "Submitting..."
                     : currentQuestionNumber === totalQuestions
-                    ? "Complete assessment"
-                    : "Next question"}
+                      ? "Complete assessment"
+                      : "Next question"}
                   <ArrowRight
                     size={15}
                     className="transition-transform group-hover:translate-x-1"
@@ -633,10 +696,9 @@ function AssessmentRouteItem({
       <div
         className={`
           flex h-8 w-8 shrink-0 items-center justify-center rounded-full border
-          ${
-            completed
-              ? "border-emerald-400/30 bg-emerald-400 text-brand-navy"
-              : active
+          ${completed
+            ? "border-emerald-400/30 bg-emerald-400 text-brand-navy"
+            : active
               ? "border-white/30 bg-white text-brand-accent"
               : "border-white/10 bg-white/5 text-blue-200"
           }
@@ -646,13 +708,12 @@ function AssessmentRouteItem({
       </div>
 
       <span
-        className={`text-xs ${
-          active
+        className={`text-xs ${active
             ? "font-semibold text-white"
             : completed
-            ? "font-medium text-emerald-200"
-            : "text-blue-100/60"
-        }`}
+              ? "font-medium text-emerald-200"
+              : "text-blue-100/60"
+          }`}
       >
         {text}
       </span>

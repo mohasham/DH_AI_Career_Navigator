@@ -49,7 +49,11 @@ export default function AssessmentPickerPage() {
   useEffect(() => {
     apiGet<{ skills: SkillWithLevel[] }>("/skills/my-levels")
       .then((data) => {
-        setSkills(data.skills);
+        // Only show skills the user actually selected during
+        // onboarding (source is not null) — skills they never
+        // claimed to have don't need to be assessed.
+        const relevantSkills = data.skills.filter((s) => s.source !== null);
+        setSkills(relevantSkills);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -149,11 +153,12 @@ export default function AssessmentPickerPage() {
                     disabled={tested}
                     onClick={() => {
                       if (tested) return;
+                      console.log("Navigating to:", `/assessment/${skill.skill_name.toLowerCase()}`)
                       router.push(`/assessment/${skill.skill_name.toLowerCase()}`);
                     }}
                     className={`flex w-full items-center justify-between rounded-2xl border p-5 text-left shadow-sm transition ${tested
-                        ? "cursor-not-allowed border-emerald-100 bg-emerald-50/40 opacity-90"
-                        : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+                      ? "cursor-not-allowed border-emerald-100 bg-emerald-50/40 opacity-90"
+                      : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
                       }`}
                   >
                     <div className="flex items-center gap-4">
