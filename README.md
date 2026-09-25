@@ -24,17 +24,6 @@ Built by **Mohammad Shamma** — Capstone Project, [Program/Course Name], Septem
 ### Landing Page
 
 ![Landing page hero](docs/screenshots/landing-hero.png)
-![Landing page journey section](docs/screenshots/landing-journey.png)
-
-### Onboarding & Skill Selection
-
-![Onboarding form](docs/screenshots/onboarding.png)
-![Skill selection](docs/screenshots/skill-selection.png)
-
-### Skill Assessment
-
-![Assessment quiz](docs/screenshots/assessment-quiz.png)
-![Assessment results](docs/screenshots/assessment-results.png)
 
 ### Dashboard
 
@@ -44,14 +33,9 @@ Built by **Mohammad Shamma** — Capstone Project, [Program/Course Name], Septem
 
 ![Career matches list](docs/screenshots/career-matches.png)
 
-### Gap Analysis
-
-![Gap analysis](docs/screenshots/gap-analysis.png)
-
 ### Personalized Roadmap
 
 ![Roadmap steps](docs/screenshots/roadmap.png)
-![Activity logging](docs/screenshots/roadmap-activity.png)
 
 ### AI Career Chat
 
@@ -59,8 +43,7 @@ Built by **Mohammad Shamma** — Capstone Project, [Program/Course Name], Septem
 
 ### Mobile View
 
-![Mobile dashboard](docs/screenshots/mobile-dashboard.png)
-![Mobile navigation menu](docs/screenshots/mobile-nav.png)
+![Dashboard on mobile](docs/screenshots/mobile-dashboard.png)
 
 ---
 
@@ -209,8 +192,8 @@ Take each screenshot at **one consistent desktop size** and, where noted, one mo
 
 | Screenshot type | Recommended size |
 |---|---|
-| All desktop screenshots (landing, dashboard, matches, gap, roadmap, chat, assessment) | **1440 × 900** |
-| Mobile screenshots (`mobile-dashboard.png`, `mobile-nav.png`) | **390 × 844** (iPhone 12/13/14 size) |
+| All desktop screenshots (landing, dashboard, matches, roadmap, chat) | **1440 × 900** |
+| Mobile screenshot (`mobile-dashboard.png`) | **390 × 844** (iPhone 12/13/14 size) |
 
 Use these exact sizes via your browser's device toolbar (steps below) — don't just resize the browser window freely, since that gives inconsistent, hard-to-reproduce dimensions.
 
@@ -221,7 +204,7 @@ Use these exact sizes via your browser's device toolbar (steps below) — don't 
 3. Click the device toolbar icon (or `Ctrl+Shift+M` / `Cmd+Shift+M`)
 4. At the top, set the dimensions:
    - For desktop shots: select **"Responsive"** and manually type **1440 × 900**
-   - For mobile shots: select **"Responsive"** and manually type **390 × 844**
+   - For the mobile shot: select **"Responsive"** and manually type **390 × 844**
 5. Set the zoom/DPR dropdown to **100%** / **1** if shown, so the screenshot isn't scaled
 6. Navigate to the exact page you need (see the list under [Screenshots](#-screenshots) above for which page maps to which filename)
 7. Wait for all real data to finish loading (skill scores, career matches, roadmap steps, chat messages) before capturing — don't screenshot a loading spinner
@@ -236,22 +219,14 @@ Use these exact sizes via your browser's device toolbar (steps below) — don't 
 ```
 docs/screenshots/
 ├── landing-hero.png          (1440x900)
-├── landing-journey.png       (1440x900)
-├── onboarding.png            (1440x900)
-├── skill-selection.png       (1440x900)
-├── assessment-quiz.png       (1440x900)
-├── assessment-results.png    (1440x900)
 ├── dashboard.png             (1440x900)
 ├── career-matches.png        (1440x900)
-├── gap-analysis.png          (1440x900)
-├── roadmap.png               (1440x900)
-├── roadmap-activity.png      (1440x900)
+├── roadmap.png                (1440x900)
 ├── ai-chat.png                (1440x900)
-├── mobile-dashboard.png      (390x844)
-└── mobile-nav.png            (390x844)
+└── mobile-dashboard.png      (390x844)
 ```
 
-Once all 14 files are in place with these exact names, commit and push — the README will render them automatically on GitHub with no further edits needed.
+Once all 6 files are in place with these exact names, commit and push — the README will render them automatically on GitHub with no further edits needed.
 
 ---
 
