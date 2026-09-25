@@ -132,28 +132,61 @@ export default function HomePage() {
             lg:px-8
           "
         >
-          {/* LOGO */}
+     {/* ===========================================================
+    LOGO
 
-          <Link href="/" className="flex items-center gap-2.5">
-            <Image
-              src="/logo-icon.png"
-              alt="AI Career Navigator"
-              width={35}
-              height={35}
-              priority
-            />
+    Mobile:
+    - On small screens such as 375 × 667, only the logo icon
+      is displayed to preserve header space.
 
-            <span className="text-base font-bold text-brand-navy">
-              AI{" "}
-              <span className="text-brand-accent">
-                Career Navigator
-              </span>
-            </span>
-          </Link>
+    Tablet/Desktop:
+    - From the "sm" breakpoint (640px) upward, the full
+      AI Career Navigator name appears beside the logo.
+
+    Clicking either version returns to the landing page.
+=========================================================== */}
+
+<Link
+  href="/"
+  aria-label="AI Career Navigator home"
+  className="
+    flex
+    shrink-0
+    items-center
+    gap-2.5
+    transition-opacity
+    hover:opacity-80
+  "
+>
+  <Image
+    src="/logo-icon.png"
+    alt="AI Career Navigator"
+    width={35}
+    height={35}
+    priority
+    className="shrink-0"
+  />
+
+  {/* Hidden on mobile — visible from 640px upward */}
+  <span
+    className="
+      hidden
+      text-base
+      font-bold
+      text-brand-navy
+      sm:inline
+    "
+  >
+    AI{" "}
+    <span className="text-brand-accent">
+      Career Navigator
+    </span>
+  </span>
+</Link>
 
           {/* DESKTOP LINKS */}
 
-          <div className="hidden items-center gap-8 md:flex">
+          <div className="hidden items-center gap-8 lg:flex">
             <NavLink href="#journey">
               How it works
             </NavLink>
@@ -176,7 +209,9 @@ export default function HomePage() {
     session exists. This is the only interactive piece of
     the header; the rest of HomePage stays a Server
     Component since only AuthNavButtons is "use client". */}
-<AuthNavButtons />
+<div className="hidden lg:block">
+  <AuthNavButtons />
+</div>
 
 {/* MOBILE MENU — hamburger toggle, only visible below md,
     giving mobile users access to the nav links (How it works,

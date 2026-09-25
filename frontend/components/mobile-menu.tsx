@@ -50,7 +50,7 @@ export function MobileMenu() {
     // md:hidden: this entire component — button and panel — only
     // ever renders below the md breakpoint. On desktop, the regular
     // nav links and AuthNavButtons already handle everything.
-    <div className="md:hidden">
+    <div className="lg:hidden">
       {/* HAMBURGER / CLOSE TOGGLE BUTTON */}
       <button
         onClick={() => setOpen(!open)}
