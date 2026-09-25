@@ -469,7 +469,8 @@ export default function CareerChatPage() {
 
             <p className="mt-2 text-center text-[9px] text-slate-400">
               Guidance is based on your saved profile, assessment, matches
-              and roadmap.
+              and roadmap. AI-generated responses may contain mistakes —
+              always verify important decisions.
             </p>
           </form>
         </div>

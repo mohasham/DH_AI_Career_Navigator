@@ -76,31 +76,7 @@ export default function AssessmentPickerPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f8faff] text-brand-ink">
-      {/* ===============================================================
-          HEADER
-      =============================================================== */}
-      <header className="border-b border-slate-100 bg-white/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
-          <div className="flex items-center gap-2.5">
-            <Image
-              src="/logo-icon.png"
-              alt="AI Career Navigator"
-              width={34}
-              height={34}
-              priority
-            />
-            <span className="text-base font-bold text-brand-navy">
-              AI <span className="text-brand-accent">Career Navigator</span>
-            </span>
-          </div>
-
-          <div className="hidden items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-brand-accent sm:flex">
-            <BrainCircuit size={14} />
-            Skill Assessments
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#f8faff] text-brand-ink">
 
       {/* ===============================================================
           PAGE BACKGROUND DECORATION
@@ -234,6 +210,6 @@ export default function AssessmentPickerPage() {
           </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
