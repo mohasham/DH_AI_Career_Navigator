@@ -212,7 +212,7 @@ async function handleGoogleRegister() {
           overflow-hidden
         "
       >
-        <div className="flex md:hidden items-center gap-2.5 mb-6 justify-center">
+        <Link href="/" className="flex md:hidden items-center gap-2.5 mb-6 justify-center">
           <Image
             src="/logo-icon.png"
             alt="AI Career Navigator"
@@ -222,7 +222,7 @@ async function handleGoogleRegister() {
           <span className="font-bold text-base text-brand-navy">
             AI <span className="text-brand-accent">Career Navigator</span>
           </span>
-        </div>
+        </Link>
 
         <div className="max-w-md mx-auto w-full">
           <h2 className="text-xl font-bold text-brand-navy">

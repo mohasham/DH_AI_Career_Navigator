@@ -58,12 +58,6 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isProtectedPath = PROTECTED_PATHS.some((p) => path.startsWith(p));
 
-  // console.log("🔍 PROXY DEBUG:", {
-  //   path,
-  //   isProtectedPath,
-  //   hasSession: !!session,
-  //   sessionError: sessionError?.message,
-  // });
 
   if (isProtectedPath && !session) {
     const loginUrl = new URL("/auth/login", request.url);
