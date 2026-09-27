@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 
@@ -45,6 +45,15 @@ import { apiGet } from "@/lib/api/client";
  *   percentages.
  * - "Importance" is now the real 1-3 integer from career_skills,
  *   mapped to High/Medium/Low labels for display.
+ *
+ * SUSPENSE BOUNDARY (production build fix):
+ * Next.js requires any component using useSearchParams() to be
+ * wrapped in a <Suspense> boundary during static generation, or the
+ * production build fails with "useSearchParams() should be wrapped
+ * in a suspense boundary" — this only shows up in `next build`, not
+ * `next dev`, which is why it worked locally but failed on Vercel.
+ * Fixed by splitting into an inner content component (does the real
+ * work) and an outer default-export wrapper (adds Suspense).
  * =====================================================================
  */
 
@@ -67,7 +76,7 @@ function importanceLabel(importance: number): "High" | "Medium" | "Low" {
   return "Low";
 }
 
-export default function SkillGapPage() {
+function SkillGapPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const careerId = searchParams.get("career");
@@ -112,9 +121,9 @@ export default function SkillGapPage() {
     router.push("/matches");
   }
 
- function buildRoadmap() {
-  router.push(`/roadmap?career=${careerId}`);
-}
+  function buildRoadmap() {
+    router.push(`/roadmap?career=${careerId}`);
+  }
 
   // ---------------------------------------------------------------
   // LOADING / ERROR STATES
@@ -150,7 +159,7 @@ export default function SkillGapPage() {
       {/* ===============================================================
           HEADER
       =============================================================== */}
-{/* ===============================================================
+      {/* ===============================================================
           BACKGROUND
       =============================================================== */}
       <div className="relative overflow-hidden">
@@ -415,6 +424,26 @@ export default function SkillGapPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * =====================================================================
+ * DEFAULT EXPORT — wraps the real page content in a Suspense boundary,
+ * required by Next.js for any component using useSearchParams().
+ * =====================================================================
+ */
+export default function SkillGapPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[#f8faff]">
+          <p className="text-sm text-slate-500">Loading...</p>
+        </div>
+      }
+    >
+      <SkillGapPageContent />
+    </Suspense>
   );
 }
 

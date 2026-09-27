@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 
@@ -58,6 +58,16 @@ import { apiPost } from "@/lib/api/client";
  *   pure backend math — NO Groq/AI call happens here, so clicking
  *   this button costs nothing and is always safe to click, even
  *   repeatedly, even if nothing has actually changed.
+ *
+ * SUSPENSE BOUNDARY (production build fix):
+ * Next.js requires any component using useSearchParams() to be
+ * wrapped in a <Suspense> boundary during static generation, or the
+ * production build fails with "useSearchParams() should be wrapped
+ * in a suspense boundary" — this only shows up in `next build`, not
+ * `next dev`, which is why it worked locally but failed on Vercel.
+ * Fixed by splitting into an inner content component (does the real
+ * work) and an outer default-export wrapper (adds Suspense) — same
+ * pattern used on the /gap page for the same reason.
  * =====================================================================
  */
 
@@ -88,7 +98,7 @@ const ACTIVITY_LABELS: Record<ActivityType, string> = {
   exercise: "Practice exercise",
 };
 
-export default function RoadmapPage() {
+function RoadmapPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const careerId = searchParams.get("career");
@@ -238,7 +248,7 @@ export default function RoadmapPage() {
 
   return (
     <div className="relative min-w-0 flex-1 overflow-hidden">
-<div className="relative overflow-hidden">
+      <div className="relative overflow-hidden">
         <div className="pointer-events-none absolute -right-48 -top-40 h-[500px] w-[500px] rounded-full bg-blue-100/60 blur-3xl" />
         <div className="pointer-events-none absolute -left-52 top-[600px] h-[450px] w-[450px] rounded-full bg-indigo-100/40 blur-3xl" />
         <div className="pointer-events-none absolute inset-0 opacity-[0.025] [background-image:linear-gradient(to_right,#1e3a8a_1px,transparent_1px),linear-gradient(to_bottom,#1e3a8a_1px,transparent_1px)] [background-size:40px_40px]" />
@@ -460,6 +470,26 @@ export default function RoadmapPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * =====================================================================
+ * DEFAULT EXPORT — wraps the real page content in a Suspense boundary,
+ * required by Next.js for any component using useSearchParams().
+ * =====================================================================
+ */
+export default function RoadmapPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[#f8faff] px-6 text-center">
+          <p className="text-sm text-slate-500">Loading your roadmap...</p>
+        </div>
+      }
+    >
+      <RoadmapPageContent />
+    </Suspense>
   );
 }
 
