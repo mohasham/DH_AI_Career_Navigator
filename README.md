@@ -10,10 +10,10 @@ Built by **Mohammad Shamma** — Capstone Project, [Program/Course Name], Septem
 
 | | |
 |---|---|
-| **Frontend (Vercel)** | `<add link after deployment>` |
-| **Backend API (Railway)** | `<add link after deployment>` |
-| **API Docs (Swagger)** | `<backend URL>/docs` |
+| **Live app (Vercel)** | https://dh-ai-career-navigator.vercel.app |
 | **GitHub Repository** | https://github.com/mohasham/DH_AI_Career_Navigator |
+
+> **Note:** the backend runs on a free hosting tier that sleeps when idle, so the very first request after a period of inactivity (for example, loading the skill list during onboarding) can take up to a minute. After that it responds normally.
 
 ---
 
@@ -69,7 +69,7 @@ Built by **Mohammad Shamma** — Capstone Project, [Program/Course Name], Septem
 | Database | PostgreSQL via Supabase |
 | Auth | Supabase Auth (email/password + Google OAuth) |
 | AI | Groq API (`openai/gpt-oss-20b`), JSON-mode structured output |
-| Hosting | Vercel (frontend) + Railway (backend) |
+| Hosting | Vercel (frontend) + Render (backend) |
 
 ---
 
