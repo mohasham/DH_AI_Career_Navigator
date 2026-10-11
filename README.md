@@ -162,7 +162,7 @@ App available at `http://localhost:3000`.
 
 ### Database
 
-Run the migration files in `backend/migrations/` against your Supabase project, in numeric order (`001_...` through `006_...`).
+Run the migration files in `backend/migrations/` against your Supabase project, in numeric order (`001_...` through `007_...`).
 
 ---
 
