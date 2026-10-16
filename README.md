@@ -2,7 +2,7 @@
 
 > AI-powered career discovery and roadmap platform — assess your real skills, get matched to careers with a deterministic scoring engine, understand your gaps, and follow a personalized, AI-generated learning roadmap.
 
-Built by **Mohammad Shamma** — Capstone Project, [Program/Course Name], September 2026
+Built by **Mohammad Shamma** — Capstone Project, The Digital Hub by UNRWA, September 2026
 
 ---
 
@@ -64,7 +64,7 @@ Built by **Mohammad Shamma** — Capstone Project, [Program/Course Name], Septem
 
 | Layer | Technology |
 |---|---|
-| Frontend | Next.js 16 (App Router, Turbopack), TypeScript, Tailwind CSS v4, shadcn/ui |
+| Frontend | Next.js 16 (App Router, Turbopack), TypeScript, Tailwind CSS v4, shadcn/ui, Zustand (shared state) |
 | Backend | FastAPI (Python) |
 | Database | PostgreSQL via Supabase |
 | Auth | Supabase Auth (email/password + Google OAuth) |
@@ -84,6 +84,21 @@ Every AI-generated piece of content in this app (roadmap steps, chat responses) 
 
 ---
 
+## 🗂️ Frontend State Management
+
+Server data that several pages need is kept in one shared [Zustand](https://zustand.docs.pmnd.rs/) store (`frontend/lib/store/app-store.ts`) instead of every page fetching and holding its own copy.
+
+- **In the store:** the dashboard summary, the user's skill levels, and the detailed per-skill scores (assessment, logged activity, total).
+- **Stays local (`useState`):** form inputs, menu toggles, the current quiz question — state that belongs to a single page.
+- **One request, many readers:** simultaneous requests for the same endpoint share one call, so opening the dashboard sends a single summary request instead of several.
+- **Fast and correct:** cached data renders instantly, and pages whose numbers can change (dashboard, chat panel, assessment picker) refresh in the background.
+- **Writes refresh the store:** submitting a quiz or adding skills updates it, so every page sees the change.
+- **Safe on logout:** the store is wiped on logout, and a generation counter discards any response still in flight, so one user's data can never appear for the next.
+
+**Why Zustand:** it needs no provider and subscribes each component only to the slice it reads. React Context re-renders every consumer on any change, and Redux adds more ceremony than three shared datasets justify. SWR and React Query would also have worked; Zustand gave full control over when data is refreshed (after a quiz, after saving skills, on logout).
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -95,7 +110,7 @@ ai-career-navigator/
 │   │   ├── assessment/[skill]/  # Standalone quiz page
 │   │   └── onboarding/
 │   ├── components/
-│   └── lib/
+│   └── lib/            # API client, shared Zustand store
 ├── backend/
 │   ├── app/
 │   │   ├── routers/    # One file per feature area
