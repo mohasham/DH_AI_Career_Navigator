@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { apiGet, apiPost } from "@/lib/api/client";
+import { useAppStore } from "@/lib/store/app-store";
 
 /**
  * =====================================================================
@@ -53,6 +54,30 @@ import { apiGet, apiPost } from "@/lib/api/client";
  * to know during onboarding before seeing matches, ensuring those
  * matches are based on real, complete assessed data rather than
  * partial/unverified claims.
+ *
+ * ---------------------------------------------------------------------
+ * SHARED DATA (ZUSTAND) — WHAT CHANGED
+ * ---------------------------------------------------------------------
+ * This page is the place where the user's skill levels CHANGE: every
+ * submitted quiz turns a "selected" skill into a "tested" one. Before,
+ * it fetched /skills/my-levels into a throwaway local variable, so
+ * every OTHER page that held skill data had no idea anything changed.
+ *
+ * Now the "what's left to test?" check goes through the shared store
+ * (frontend/lib/store/app-store.ts — its header comment explains the
+ * whole problem and why Zustand was chosen). It is called with
+ * { force: true }, which does two things at once:
+ *   1. asks the server for the FRESH list (we just changed it, so a
+ *      cached copy would be wrong — and a wrong answer here is exactly
+ *      the old "Continue to career matches shown too early" bug), and
+ *   2. writes that fresh list into the store, so the layout's
+ *      onboarding gate, the assessment picker and the edit-profile
+ *      page all see the new levels immediately instead of each
+ *      re-discovering them.
+ *
+ * Everything quiz-specific — current question, selected answers,
+ * submit state — stays in plain useState on purpose: it belongs to
+ * this page only and should reset when the user leaves it.
  * =====================================================================
  */
 
@@ -66,6 +91,9 @@ type Question = {
 export default function AssessmentPage() {
   const router = useRouter();
   const params = useParams();
+
+  // Shared skill levels live in the Zustand store, not in this page.
+  const loadLevels = useAppStore((s) => s.loadLevels);
   const skillParam = (params.skill as string) || "";
   const skillDisplayName = decodeURIComponent(skillParam)
     .split(" ")
@@ -137,11 +165,11 @@ export default function AssessmentPage() {
     // it back, avoiding a race condition where this check might run
     // against slightly stale data.
     const timer = setTimeout(() => {
-      apiGet<{
-        skills: { skill_name: string; source: string | null }[];
-      }>("/skills/my-levels")
-        .then((data) => {
-          const nextUntested = data.skills.find(
+      // force: true -> never trust the cache right after a submit; the
+      // store also keeps the fresh result for the rest of the app.
+      loadLevels({ force: true })
+        .then((skills) => {
+          const nextUntested = skills.find(
             (s) => s.source !== null && s.source !== "tested"
           );
           setNextSkillName(nextUntested ? nextUntested.skill_name : null);
@@ -154,7 +182,7 @@ export default function AssessmentPage() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [result]);
+  }, [result, loadLevels]);
   const currentQuestion = questions[currentQuestionIndex];
   const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined;
   const totalQuestions = questions.length;

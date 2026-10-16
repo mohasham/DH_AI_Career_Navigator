@@ -15,6 +15,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { apiGet, apiPut, apiPost } from "@/lib/api/client";
+import { useAppStore } from "@/lib/store/app-store";
 
 /**
  * =====================================================================
@@ -54,11 +55,37 @@ import { apiGet, apiPut, apiPost } from "@/lib/api/client";
  * takes its real assessment (same rule as every skill in the
  * system). Existing roadmaps stay frozen until "Refresh roadmap"
  * is clicked, consistent with the rest of the app's design.
+ *
+ * ---------------------------------------------------------------------
+ * SHARED DATA (ZUSTAND) — WHAT CHANGED
+ * ---------------------------------------------------------------------
+ * "Currently selected" skills used to be fetched here from
+ * /skills/my-levels into a private useState, and after "Add skills"
+ * the page patched that private copy by hand. Every OTHER page that
+ * knows the user's skills (the layout's onboarding gate, the
+ * assessment picker, the chat panel) never heard about the new ones
+ * until its own next fetch — the classic "two copies disagree"
+ * problem. See frontend/lib/store/app-store.ts for the full story and
+ * why Zustand was chosen.
+ *
+ * Now the selected skills come from the shared store (`levels`) and
+ * mySkills is DERIVED from it, not stored again. After POST
+ * /profile/skills succeeds we call loadLevels({ force: true }): that
+ * re-reads the truth from the server and updates the store, so this
+ * page and every other page see the new skills at once. No manual
+ * patching, nothing to forget.
+ *
+ * What stays in useState on purpose:
+ *   - the form fields and saving/saved/error flags (this page's own
+ *     UI state),
+ *   - the skills CATALOG (/skills): only this page and onboarding use
+ *     it, so there is nothing to share,
+ *   - which new skills are ticked (newlySelectedIds): a temporary
+ *     choice that should vanish when the user leaves.
  * =====================================================================
  */
 
 type SkillOption = { id: number; name: string };
-type MySkill = { skill_id: number; skill_name: string; source: string | null };
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -76,7 +103,14 @@ export default function EditProfilePage() {
 
   // Skills — add-more UI
   const [availableSkills, setAvailableSkills] = useState<SkillOption[]>([]);
-  const [mySkills, setMySkills] = useState<MySkill[]>([]);
+
+  // The user's selected skills come from the shared store. `levels`
+  // lists every skill with its source; source === null means the user
+  // never selected it, so we keep only the selected ones.
+  const levels = useAppStore((s) => s.levels);
+  const loadLevels = useAppStore((s) => s.loadLevels);
+  const mySkills = (levels ?? []).filter((s) => s.source !== null);
+
   const [newlySelectedIds, setNewlySelectedIds] = useState<number[]>([]);
   const [skillsSaving, setSkillsSaving] = useState(false);
   const [skillsMessage, setSkillsMessage] = useState<string | null>(null);
@@ -122,10 +156,11 @@ export default function EditProfilePage() {
       .then((data) => setAvailableSkills(data.skills))
       .catch(() => {});
 
-    apiGet<{ skills: MySkill[] }>("/skills/my-levels")
-      .then((data) => setMySkills(data.skills.filter((s) => s.source !== null)))
-      .catch(() => {});
-  }, []);
+    // Cached copy is fine here: the layout's onboarding gate already
+    // refreshes `levels` on every navigation, and this page refreshes
+    // it itself after adding skills (see handleAddSkills).
+    loadLevels().catch(() => {});
+  }, [loadLevels]);
 
   /**
    * -------------------------------------------------------------------
@@ -171,17 +206,9 @@ export default function EditProfilePage() {
       setSkillsMessage(
         "Skills added! Visit the assessment page to test them — until then, they won't affect your matches."
       );
-      setMySkills((current) => [
-        ...current,
-        ...newlySelectedIds.map((id) => {
-          const skill = availableSkills.find((s) => s.id === id);
-          return {
-            skill_id: id,
-            skill_name: skill?.name || "",
-            source: "selected",
-          };
-        }),
-      ]);
+      // Re-read the truth from the server and update the shared store,
+      // so every page sees the new skills (not just this one).
+      await loadLevels({ force: true }).catch(() => {});
       setNewlySelectedIds([]);
     } catch (err) {
       setSkillsMessage("Failed to add skills. Please try again.");

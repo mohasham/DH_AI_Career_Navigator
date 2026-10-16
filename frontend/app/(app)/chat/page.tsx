@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ArrowRight,
@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 import { apiGet, apiPost } from "@/lib/api/client";
+import { useAppStore } from "@/lib/store/app-store";
 
 /**
  * =====================================================================
@@ -36,6 +37,31 @@ import { apiGet, apiPost } from "@/lib/api/client";
  * chat-history sidebar (narrow, left edge of this section) —
  * matching real AI chat products (ChatGPT-style), replacing an
  * earlier dropdown version that had a stale-click bug.
+ *
+ * ---------------------------------------------------------------------
+ * SHARED DATA (ZUSTAND) — WHAT CHANGED
+ * ---------------------------------------------------------------------
+ * The right-hand "What your guide knows" panel needs two things the
+ * rest of the app already loads: the dashboard summary (target career,
+ * readiness, steps, gaps) and the detailed skill scores (strongest
+ * skills). Before, this page fetched BOTH itself on every visit into a
+ * private useState copy — the same requests the dashboard and the
+ * assessment picker make — and the panel always sat on "Loading
+ * context..." first.
+ *
+ * Now both come from the shared store (frontend/lib/store/app-store.ts
+ * explains the problem and why Zustand). The panel is DERIVED from
+ * them with useMemo instead of being copied into its own state, so it
+ * can never disagree with the dashboard. On a revisit it appears
+ * instantly from the cache and is refreshed in the background
+ * ({ force: true }) because readiness and scores change as the user
+ * logs progress.
+ *
+ * What stays in useState: everything chat-specific — messages, the
+ * input box, the session list, the "thinking" flag. That is this
+ * page's own UI state, not data other pages share, and the chat
+ * sessions/messages endpoints are NOT in the store on purpose (only
+ * this page uses them).
  * =====================================================================
  */
 
@@ -92,7 +118,38 @@ export default function CareerChatPage() {
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
 
-  const [context, setContext] = useState<CareerContext | null>(null);
+  // Shared server data (null = not loaded yet).
+  const summary = useAppStore((s) => s.summary);
+  const detailedLevels = useAppStore((s) => s.detailedLevels);
+  const loadSummary = useAppStore((s) => s.loadSummary);
+  const loadDetailedLevels = useAppStore((s) => s.loadDetailedLevels);
+
+  // The right-panel context is DERIVED from the store, not stored a
+  // second time. It is null until both pieces have loaded at least once.
+  const context: CareerContext | null = useMemo(() => {
+    if (!summary || !detailedLevels) return null;
+
+    const strongestSkills = detailedLevels
+      .filter((s) => s.total_score >= 60)
+      .sort((a, b) => b.total_score - a.total_score)
+      .slice(0, 3)
+      .map((s) => ({ name: s.skill_name, level: s.total_score }));
+
+    const priorityGaps = summary.opportunities
+      .slice(0, 3)
+      .map((o) => ({ name: o.skill_name, level: o.current_level }));
+
+    return {
+      hasRoadmap: summary.has_roadmap,
+      targetCareer: summary.target_career,
+      readiness: summary.readiness_percentage,
+      currentStepTitle: summary.current_step_title,
+      stepsCompleted: summary.steps_completed,
+      stepsTotal: summary.steps_total,
+      strongestSkills,
+      priorityGaps,
+    };
+  }, [summary, detailedLevels]);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -149,56 +206,19 @@ export default function CareerChatPage() {
   }, []);
 
   // -------------------------------------------------------------
-  // LOAD REAL CAREER CONTEXT FOR THE RIGHT PANEL
+  // REFRESH THE SHARED CONTEXT DATA
   // -------------------------------------------------------------
+  // force: true -> show whatever is cached right away, but always ask
+  // the server again so the panel is correct. Both requests are shared
+  // with any other page asking at the same moment (no duplicates).
   useEffect(() => {
-    async function loadContext() {
-      try {
-        const summary = await apiGet<{
-          has_roadmap: boolean;
-          target_career: string | null;
-          readiness_percentage: number;
-          steps_completed: number;
-          steps_total: number;
-          current_step_title: string | null;
-          opportunities: { skill_name: string; current_level: number }[];
-        }>("/dashboard/summary");
-
-        const skillsDetailed = await apiGet<{
-          skills: {
-            skill_name: string;
-            total_score: number;
-            source: string | null;
-          }[];
-        }>("/skills/my-levels-detailed");
-
-        const testedSkills = skillsDetailed.skills
-          .filter((s) => s.total_score >= 60)
-          .sort((a, b) => b.total_score - a.total_score)
-          .slice(0, 3)
-          .map((s) => ({ name: s.skill_name, level: s.total_score }));
-
-        const priorityGaps = summary.opportunities
-          .slice(0, 3)
-          .map((o) => ({ name: o.skill_name, level: o.current_level }));
-
-        setContext({
-          hasRoadmap: summary.has_roadmap,
-          targetCareer: summary.target_career,
-          readiness: summary.readiness_percentage,
-          currentStepTitle: summary.current_step_title,
-          stepsCompleted: summary.steps_completed,
-          stepsTotal: summary.steps_total,
-          strongestSkills: testedSkills,
-          priorityGaps,
-        });
-      } catch (err) {
-        console.error("Failed to load career context:", err);
-      }
-    }
-
-    loadContext();
-  }, []);
+    Promise.all([
+      loadSummary({ force: true }),
+      loadDetailedLevels({ force: true }),
+    ]).catch((err) => {
+      console.error("Failed to load career context:", err);
+    });
+  }, [loadSummary, loadDetailedLevels]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

@@ -100,14 +100,28 @@ import { apiGet } from "@/lib/api/client";
  * since the request started.
  *
  * ---------------------------------------------------------------------
- * PHASE 1 SCOPE
+ * PHASE 1 + PHASE 2 SCOPE
  * ---------------------------------------------------------------------
- * Phase 1 uses this store from the shared layout and the dashboard.
- * The remaining pages (chat, assessment picker, edit profile, the quiz
- * page) still fetch on their own and will be moved over in Phase 2 —
- * until then the layout's onboarding gate deliberately uses
- * { force: true } for skill levels, so it never makes a decision from
- * a copy that a not-yet-migrated page could have made stale.
+ * Phase 1 moved the shared layout and the dashboard onto this store.
+ * Phase 2 adds a third slice, `detailedLevels` (the per-skill
+ * breakdown from GET /skills/my-levels-detailed: assessment score,
+ * logged activity, blended total), used by the assessment picker and
+ * the chat page, and moves those pages plus the quiz page over.
+ *
+ * WHY A SEPARATE SLICE FROM `levels`?
+ * `levels` is a light list (skill name + source) used for routing
+ * decisions such as the onboarding gate. `detailedLevels` carries the
+ * numbers shown to the user. They come from different endpoints with
+ * different payload sizes, so each is cached and refreshed on its own.
+ *
+ * WHO KEEPS THEM FRESH?
+ * Skill data changes in a few known places: submitting a quiz,
+ * adding skills on the edit-profile page, and logging activity on the
+ * roadmap. Pages that DISPLAY numbers (picker, chat) revalidate with
+ * { force: true } when they open, so they show the cached copy
+ * instantly and then correct it. That is why a page that still
+ * writes without telling the store (the roadmap) cannot make them
+ * wrong.
  * =====================================================================
  */
 
@@ -140,7 +154,19 @@ export type DashboardSummary = {
 // app currently reads). `source` is null if the user never selected
 // the skill, otherwise "selected" | "tested" | "practiced".
 export type SkillLevel = {
+  skill_id: number;
   skill_name: string;
+  source: string | null;
+};
+
+// Shape of each entry in GET /skills/my-levels-detailed — the three
+// numbers the picker shows (assessment, logged activity, total).
+export type DetailedSkillLevel = {
+  skill_id: number;
+  skill_name: string;
+  real_assessment_score: number;
+  practiced_score: number;
+  total_score: number;
   source: string | null;
 };
 
@@ -153,6 +179,7 @@ type AppState = {
   // null = "not loaded yet" (different from "loaded and empty").
   summary: DashboardSummary | null;
   levels: SkillLevel[] | null;
+  detailedLevels: DetailedSkillLevel[] | null;
 
   // Both loaders RESOLVE with the data and REJECT on a network/API
   // error — each caller decides what an error means for its page
@@ -160,6 +187,7 @@ type AppState = {
   // simply shows its empty state).
   loadSummary: (options?: LoadOptions) => Promise<DashboardSummary>;
   loadLevels: (options?: LoadOptions) => Promise<SkillLevel[]>;
+  loadDetailedLevels: (options?: LoadOptions) => Promise<DetailedSkillLevel[]>;
 
   // Wipes all cached data. Call on logout.
   reset: () => void;
@@ -178,6 +206,7 @@ let generation = 0;
 // duplicate.
 let summaryRequest: Promise<DashboardSummary> | null = null;
 let levelsRequest: Promise<SkillLevel[]> | null = null;
+let detailedRequest: Promise<DetailedSkillLevel[]> | null = null;
 
 // -------------------------------------------------------------------
 // THE STORE
@@ -186,6 +215,7 @@ let levelsRequest: Promise<SkillLevel[]> | null = null;
 export const useAppStore = create<AppState>((set, get) => ({
   summary: null,
   levels: null,
+  detailedLevels: null,
 
   loadSummary: async ({ force = false } = {}) => {
     // Cached and not forced -> no network at all.
@@ -242,10 +272,36 @@ export const useAppStore = create<AppState>((set, get) => ({
     return request;
   },
 
+  loadDetailedLevels: async ({ force = false } = {}) => {
+    const cached = get().detailedLevels;
+    if (cached && !force) return cached;
+
+    if (detailedRequest) return detailedRequest;
+
+    const startedInGeneration = generation;
+
+    const request: Promise<DetailedSkillLevel[]> = apiGet<{
+      skills: DetailedSkillLevel[];
+    }>("/skills/my-levels-detailed")
+      .then((data) => {
+        if (startedInGeneration === generation) {
+          set({ detailedLevels: data.skills });
+        }
+        return data.skills;
+      })
+      .finally(() => {
+        if (detailedRequest === request) detailedRequest = null;
+      });
+
+    detailedRequest = request;
+    return request;
+  },
+
   reset: () => {
     generation += 1;
     summaryRequest = null;
     levelsRequest = null;
-    set({ summary: null, levels: null });
+    detailedRequest = null;
+    set({ summary: null, levels: null, detailedLevels: null });
   },
 }));

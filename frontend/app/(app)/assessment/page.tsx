@@ -9,7 +9,7 @@ import {
   Compass,
   Sparkles,
 } from "lucide-react";
-import { apiGet } from "@/lib/api/client";
+import { useAppStore, type DetailedSkillLevel } from "@/lib/store/app-store";
 
 /**
  * =====================================================================
@@ -41,31 +41,50 @@ import { apiGet } from "@/lib/api/client";
  * A progress bar beneath reflects the Total value, colored emerald
  * once a real assessment exists ("tested"), amber while still only
  * "practiced" (capped below 100).
+ *
+ * ---------------------------------------------------------------------
+ * SHARED DATA (ZUSTAND) — WHAT CHANGED
+ * ---------------------------------------------------------------------
+ * Before: this page fetched /skills/my-levels-detailed into its own
+ * useState, and the chat page fetched the SAME endpoint into ITS own
+ * copy. Every visit showed a "Loading skills..." screen even if we had
+ * the list a moment earlier.
+ *
+ * Now the list lives in the shared store (`detailedLevels`, see
+ * frontend/lib/store/app-store.ts for the full explanation). This page
+ * uses stale-while-revalidate:
+ *   1. If the store already has the list, render it IMMEDIATELY
+ *      (no spinner on return visits).
+ *   2. Always ask the server again with { force: true } and update
+ *      the store when the answer arrives.
+ * Step 2 is deliberate: the numbers here change when the user takes a
+ * quiz or logs activity on the roadmap, so a cached copy must never be
+ * trusted blindly. Fast AND correct.
+ *
+ * `loading` stays in useState: it is purely this page's own UI flag.
  * =====================================================================
  */
 
-type SkillWithLevel = {
-  skill_id: number;
-  skill_name: string;
-  real_assessment_score: number;
-  practiced_score: number;
-  total_score: number;
-  source: string | null;
-};
+type SkillWithLevel = DetailedSkillLevel;
 
 export default function AssessmentPickerPage() {
   const router = useRouter();
-  const [skills, setSkills] = useState<SkillWithLevel[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  // Shared list from the store (null = not loaded yet).
+  const detailedLevels = useAppStore((s) => s.detailedLevels);
+  const loadDetailedLevels = useAppStore((s) => s.loadDetailedLevels);
+  const skills: SkillWithLevel[] = detailedLevels ?? [];
+
+  // Only show the full-page spinner when we have nothing to show yet.
+  const [loading, setLoading] = useState(detailedLevels === null);
 
   useEffect(() => {
-    apiGet<{ skills: SkillWithLevel[] }>("/skills/my-levels-detailed")
-      .then((data) => {
-        setSkills(data.skills);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+    // force: true -> refresh in the background even if we have a
+    // cached copy; the page re-renders by itself when the store updates.
+    loadDetailedLevels({ force: true })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [loadDetailedLevels]);
 
   if (loading) {
     return (
