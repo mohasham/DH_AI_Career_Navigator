@@ -16,7 +16,10 @@ import {
   Compass,
 } from "lucide-react";
 
-import { apiGet } from "@/lib/api/client";
+import {
+  useAppStore,
+  type DashboardOpportunity,
+} from "@/lib/store/app-store";
 
 /**
  * =====================================================================
@@ -45,43 +48,55 @@ import { apiGet } from "@/lib/api/client";
  *   available metrics: steps completed/total and current step title.
  * - Empty state: if the user has no roadmap yet, shows a friendly
  *   prompt to explore career matches instead of a broken dashboard.
+ *
+ * ---------------------------------------------------------------------
+ * SHARED DATA (ZUSTAND) — WHAT CHANGED
+ * ---------------------------------------------------------------------
+ * This page used to fetch /dashboard/summary into its own useState,
+ * while the layout fetched the same endpoint too — two identical
+ * requests on every dashboard load. The summary now lives in the
+ * shared Zustand store (frontend/lib/store/app-store.ts; its header
+ * comment explains the full problem and why Zustand was chosen).
+ *
+ * The page uses "stale-while-revalidate":
+ *   1. If the store already has a summary (you came from another
+ *      page), show it INSTANTLY — no loading spinner flash.
+ *   2. Either way, ask the store for a FRESH copy in the background
+ *      ({ force: true }), because roadmap progress can change
+ *      between visits. When it arrives the page updates by itself.
+ *   3. If the layout is already fetching the summary at this moment,
+ *      the store hands this page that same request — one network call.
+ *
+ * The DashboardSummary / DashboardOpportunity types moved into the
+ * store file, since the store and several pages must share one
+ * definition of the response shape.
  * =====================================================================
  */
-
-type DashboardOpportunity = {
-  skill_name: string;
-  current_level: number;
-  required_level: number;
-  gap: number;
-};
-
-type DashboardSummary = {
-  has_roadmap: boolean;
-  target_career: string | null;
-  readiness_percentage: number;
-  steps_completed: number;
-  steps_total: number;
-  opportunities: DashboardOpportunity[];
-  current_step_title: string | null;
-};
 
 export default function DashboardPage() {
   const router = useRouter();
 
   const [userName, setUserName] = useState("there");
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+
+  // The summary comes from the shared store, not local state.
+  const summary = useAppStore((s) => s.summary);
+  const loadSummary = useAppStore((s) => s.loadSummary);
+
+  // Only show the full-page "Loading..." when there is NOTHING to
+  // show yet. If the store already holds a summary, render it right
+  // away and refresh quietly in the background.
+  const [loading, setLoading] = useState(summary === null);
 
   useEffect(() => {
-    apiGet<DashboardSummary>("/dashboard/summary")
-      .then((data) => {
-        setSummary(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        setLoading(false);
-      });
-  }, []);
+    // force: true = always revalidate with the server (progress may
+    // have changed since the cached copy). The store updates itself,
+    // so there is no setSummary here — the page re-renders when the
+    // fresh data lands. On error we just stop the spinner and keep
+    // whatever we have (or the empty state if nothing).
+    loadSummary({ force: true })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [loadSummary]);
 
   if (loading) {
     return (

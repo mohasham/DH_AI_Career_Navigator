@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/auth/supabase-client";
 import { apiGet } from "@/lib/api/client";
+import { useAppStore } from "@/lib/store/app-store";
 
 /**
  * =====================================================================
@@ -52,6 +53,16 @@ import { apiGet } from "@/lib/api/client";
  * have NO way to navigate between pages. This hamburger menu +
  * slide-down panel fixes that, reusing the same navigation items
  * as the desktop sidebar.
+ *
+ * SHARED DATA (ZUSTAND): this layout used to fetch /dashboard/summary
+ * (twice) and /skills/my-levels into its own useState, and the
+ * dashboard page then fetched /dashboard/summary AGAIN. That data now
+ * lives in one Zustand store (frontend/lib/store/app-store.ts — read
+ * the big comment at the top of that file for the full explanation of
+ * the problem and why Zustand was chosen). Here the layout only READS
+ * from the store and asks it to load; the store dedupes the requests.
+ * Purely local UI state (menus, user name) deliberately stays in
+ * useState — the store is only for server data several pages share.
  * =====================================================================
  */
 
@@ -64,17 +75,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [userEmail, setUserEmail] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [careerId, setCareerId] = useState<number | null>(null);
 
+  // --- Shared server data from the Zustand store -------------------
+  // Selector form (s) => s.something means this component re-renders
+  // only when THAT piece changes, not on every store update.
+  //
+  // careerId is DERIVED from the cached dashboard summary instead of
+  // being a second copy in useState: if the user has a roadmap, it is
+  // that roadmap's career, otherwise null. Same result as before, but
+  // there is now a single source of truth.
+  const careerId = useAppStore((s) =>
+    s.summary?.has_roadmap && s.summary.career_id ? s.summary.career_id : null
+  );
+  const loadSummary = useAppStore((s) => s.loadSummary);
+  const loadLevels = useAppStore((s) => s.loadLevels);
+  const resetStore = useAppStore((s) => s.reset);
+
+  // Warm the shared cache once on mount. If the summary is already in
+  // the store this does nothing; if the dashboard asks for it at the
+  // same moment, both share ONE request (that was the duplicate call
+  // before). Errors are ignored here — the sidebar simply falls back
+  // to /matches until a roadmap is known.
   useEffect(() => {
-    apiGet<{ has_roadmap: boolean; career_id?: number }>("/dashboard/summary")
-      .then((data) => {
-        if (data.has_roadmap && data.career_id) {
-          setCareerId(data.career_id);
-        }
-      })
-      .catch(() => {});
-  }, []);
+    loadSummary().catch(() => {});
+  }, [loadSummary]);
 
   // Guard: if the user hasn't completed onboarding yet (no profile
   // row exists), redirect them there before showing any dashboard-
@@ -94,13 +118,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // the first check.
   useEffect(() => {
     apiGet("/profile")
-      .then(() => {
-        return apiGet<{
-          skills: { skill_name: string; source: string | null }[];
-        }>("/skills/my-levels");
-      })
-      .then((data) => {
-        const selectedSkills = data.skills.filter((s) => s.source !== null);
+      // { force: true } on purpose: this gate decides whether to lock
+      // the user out of the app, so it must NEVER act on a cached copy
+      // that a quiz or edit-profile page (not yet migrated to the
+      // store) could have made stale. The fresh result is also written
+      // into the store for anyone else who needs it.
+      .then(() => loadLevels({ force: true }))
+      .then((skills) => {
+        const selectedSkills = skills.filter((s) => s.source !== null);
         const hasAnyTested = selectedSkills.some((s) => s.source === "tested");
         const hasUntestedSelected = selectedSkills.some((s) => s.source !== "tested");
 
@@ -133,6 +158,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function handleLogout() {
+    // Wipe cached server data FIRST so the next person who logs in on
+    // this browser can never see this user's dashboard or skills, even
+    // for a moment. (The store lives in memory for the whole tab
+    // session, so it would NOT clear itself on a client-side redirect.)
+    resetStore();
     await supabase.auth.signOut();
     router.push("/");
     router.refresh();
@@ -150,12 +180,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const data = await apiGet<{ has_roadmap: boolean; career_id?: number }>(
-        "/dashboard/summary"
-      );
+      // Forced so a roadmap generated moments ago is picked up, even
+      // if the cached summary still says "no roadmap". The store
+      // updates itself, so careerId refreshes everywhere automatically.
+      const data = await loadSummary({ force: true });
 
       if (data.has_roadmap && data.career_id) {
-        setCareerId(data.career_id);
         router.push(`${basePath}?career=${data.career_id}`);
         return;
       }
