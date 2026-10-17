@@ -56,9 +56,29 @@ STEP_ID AND IS_COMPLETED (added for progress tracking):
   endpoints require the real step_id. Freshly generated steps
   always start is_completed=False (nothing has been done yet);
   existing steps return their real, current completion state.
+
+TARGET CAREER (SWITCHING BETWEEN ROADMAPS):
+- A user can have several roadmaps, one per career. The dashboard
+  and the chat both treat the MOST RECENTLY UPDATED roadmap as the
+  user's current target career.
+- `updated_at` is set by a database default ONLY when a roadmap row
+  is created, and nothing else changes it (no trigger, and ticking
+  steps or logging activity do not touch it). So a freshly generated
+  roadmap automatically becomes the target, but an OLDER roadmap
+  never would — switching back to a previous career silently did
+  nothing.
+- POST /roadmap/activate fixes exactly that: it stamps an existing
+  roadmap's `updated_at` with the current time, which makes it the
+  current target. It is deliberately separate from /roadmap/generate,
+  because generate is also called when a user merely revisits a
+  roadmap page, and just LOOKING at a roadmap must never change the
+  target. Only an explicit switch calls activate.
+- Nothing is deleted when switching: every roadmap and its progress
+  stays, so the user can switch back at any time.
 """
 
 import json
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from groq import Groq
 from app.core.auth import get_current_user_id
@@ -523,3 +543,47 @@ async def recalculate_roadmap(
         already_existed=True,
         steps=response_steps,
     )
+
+
+@router.post("/roadmap/activate")
+async def activate_roadmap(
+    request: RoadmapGenerateRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Makes the user's EXISTING roadmap for a career their current
+    target career, by stamping its `updated_at` with the current time
+    (the dashboard and chat pick the most recently updated roadmap).
+
+    Only touches a roadmap that belongs to the current user. Returns
+    404 if the user has no roadmap for that career yet — in that case
+    the caller should use POST /roadmap/generate, which creates one
+    and (being the newest) makes it the target automatically.
+
+    No AI call, nothing deleted, no progress changed.
+    """
+    supabase = get_supabase()
+
+    roadmap_result = (
+        supabase.table("roadmaps")
+        .select("id")
+        .eq("profile_id", user_id)
+        .eq("career_id", request.career_id)
+        .execute()
+    )
+
+    if not roadmap_result.data:
+        raise HTTPException(
+            status_code=404,
+            detail="No roadmap exists for this career yet. Generate one first.",
+        )
+
+    roadmap_id = roadmap_result.data[0]["id"]
+
+    # The extra profile_id filter repeats the ownership check on the
+    # write itself, so this can never stamp someone else's roadmap.
+    supabase.table("roadmaps").update(
+        {"updated_at": datetime.now(timezone.utc).isoformat()}
+    ).eq("id", roadmap_id).eq("profile_id", user_id).execute()
+
+    return {"roadmap_id": roadmap_id, "career_id": request.career_id}

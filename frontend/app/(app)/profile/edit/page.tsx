@@ -34,8 +34,8 @@ import { useAppStore } from "@/lib/store/app-store";
  * ---------------------------------------------------------------------
  * CONFIRMED SAFE, ISOLATED CHANGE (profile fields)
  * ---------------------------------------------------------------------
- * None of these fields (education, experience_years, career_goal,
- * work_preference, industry_interest) are ever read by career
+ * None of these profile fields (education, experience_years,
+ * career_goal, work_preference, industry_interest) are ever read by career
  * matching, gap analysis, or roadmap generation/recalculation —
  * those are driven entirely by user_skills.assessed_level (real,
  * tested scores). Editing this profile data has zero downstream
@@ -55,6 +55,32 @@ import { useAppStore } from "@/lib/store/app-store";
  * takes its real assessment (same rule as every skill in the
  * system). Existing roadmaps stay frozen until "Refresh roadmap"
  * is clicked, consistent with the rest of the app's design.
+ *
+ * ---------------------------------------------------------------------
+ * TARGET CAREER (replaces the old free-text "Career goal" box)
+ * ---------------------------------------------------------------------
+ * The old "Career goal" box was saved but never read by anything, so
+ * typing in it changed nothing. It is replaced by a real "Target
+ * career" picker that DOES change things: the dashboard, the gap
+ * analysis and the roadmap all follow the user's current target.
+ *
+ * HOW A SWITCH WORKS (two backend calls + one store refresh):
+ *   1. POST /roadmap/generate { career_id } — returns the user's
+ *      existing roadmap for that career, or generates a new one
+ *      (an AI call, so it can take a few seconds).
+ *   2. If the roadmap ALREADY existed, POST /roadmap/activate — the
+ *      backend treats the most recently updated roadmap as the
+ *      target, and an old roadmap's timestamp never changes by
+ *      itself, so activate stamps it. (A brand-new roadmap is
+ *      already the newest, so it needs no activate call.)
+ *   3. loadSummary({ force: true }) — one call refreshes the shared
+ *      store, so the sidebar links, dashboard and chat panel all show
+ *      the new target at once.
+ * Nothing is deleted: every roadmap and its progress is kept, and the
+ * user can switch back any time. The career list comes from
+ * GET /careers/match, which also gives each career's match percentage.
+ * The stored career_goal text is still loaded and re-sent unchanged
+ * on save so no existing data is lost; it just has no input anymore.
  *
  * ---------------------------------------------------------------------
  * SHARED DATA (ZUSTAND) — WHAT CHANGED
@@ -87,6 +113,13 @@ import { useAppStore } from "@/lib/store/app-store";
 
 type SkillOption = { id: number; name: string };
 
+// One entry of GET /careers/match (all careers, best match first).
+type CareerOption = {
+  career_id: number;
+  title: string;
+  compatibility_score: number;
+};
+
 export default function EditProfilePage() {
   const router = useRouter();
 
@@ -114,6 +147,24 @@ export default function EditProfilePage() {
   const [newlySelectedIds, setNewlySelectedIds] = useState<number[]>([]);
   const [skillsSaving, setSkillsSaving] = useState(false);
   const [skillsMessage, setSkillsMessage] = useState<string | null>(null);
+
+  // Target career — the current target comes from the shared summary
+  // (the same data the dashboard shows), so the two can never disagree.
+  const summary = useAppStore((s) => s.summary);
+  const loadSummary = useAppStore((s) => s.loadSummary);
+  const currentCareerId = summary?.has_roadmap
+    ? summary.career_id ?? null
+    : null;
+
+  const [careers, setCareers] = useState<CareerOption[]>([]);
+  // "" = the user has not touched the picker, so it shows the current
+  // target. Derived below instead of copied into state with an effect.
+  const [pickedCareerId, setPickedCareerId] = useState<number | "">("");
+  const selectedCareerId =
+    pickedCareerId === "" ? currentCareerId ?? "" : pickedCareerId;
+  const [careerSwitching, setCareerSwitching] = useState(false);
+  const [careerMessage, setCareerMessage] = useState<string | null>(null);
+  const [careerError, setCareerError] = useState<string | null>(null);
 
   /**
    * -------------------------------------------------------------------
@@ -160,7 +211,14 @@ export default function EditProfilePage() {
     // refreshes `levels` on every navigation, and this page refreshes
     // it itself after adding skills (see handleAddSkills).
     loadLevels().catch(() => {});
-  }, [loadLevels]);
+
+    // Careers for the target picker + the current target (cached is
+    // fine: every switch below refreshes the summary itself).
+    apiGet<{ matches: CareerOption[] }>("/careers/match")
+      .then((data) => setCareers(data.matches))
+      .catch(() => {});
+    loadSummary().catch(() => {});
+  }, [loadLevels, loadSummary]);
 
   /**
    * -------------------------------------------------------------------
@@ -217,6 +275,49 @@ export default function EditProfilePage() {
     }
   }
 
+  /**
+   * -------------------------------------------------------------------
+   * SWITCH TARGET CAREER
+   * -------------------------------------------------------------------
+   */
+  async function handleSwitchCareer() {
+    if (selectedCareerId === "" || selectedCareerId === currentCareerId) return;
+    setCareerSwitching(true);
+    setCareerMessage(null);
+    setCareerError(null);
+
+    try {
+      // 1) Get (or generate) the roadmap for the chosen career.
+      const roadmap = await apiPost<{
+        roadmap_id: number;
+        career_title: string;
+        already_existed: boolean;
+      }>("/roadmap/generate", { career_id: selectedCareerId });
+
+      // 2) An older roadmap must be made the current one explicitly;
+      //    a brand-new one is already the newest.
+      if (roadmap.already_existed) {
+        await apiPost("/roadmap/activate", { career_id: selectedCareerId });
+      }
+
+      // 3) One refresh updates the dashboard, sidebar and chat panel.
+      await loadSummary({ force: true });
+
+      setPickedCareerId("");
+      setCareerMessage(
+        `Target career changed to ${roadmap.career_title}. Your other roadmaps and their progress are kept.`
+      );
+    } catch (err) {
+      setCareerError(
+        err instanceof Error
+          ? err.message
+          : "Could not change your target career. Please try again."
+      );
+    } finally {
+      setCareerSwitching(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f8faff]">
@@ -240,7 +341,8 @@ export default function EditProfilePage() {
         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
           Update your background and goals. Profile fields don&apos;t affect
           your assessed skills, career matches, or roadmap — those only
-          ever come from real skill assessments.
+          ever come from real skill assessments. Your target career below
+          does change your dashboard, gap analysis and roadmap.
         </p>
 
         <form
@@ -283,15 +385,54 @@ export default function EditProfilePage() {
               </Field>
             </div>
 
-            <Field label="Career goal" icon={<Target size={15} />}>
-              <input
-                type="text"
-                value={careerGoal}
-                onChange={(e) => setCareerGoal(e.target.value)}
-                placeholder="e.g. AI Engineer"
-                className={inputClasses}
-              />
-            </Field>
+            <div>
+              <Field label="Target career" icon={<Target size={15} />}>
+                <select
+                  value={selectedCareerId}
+                  onChange={(e) =>
+                    setPickedCareerId(
+                      e.target.value === "" ? "" : Number(e.target.value)
+                    )
+                  }
+                  disabled={careerSwitching}
+                  className={selectClasses}
+                >
+                  <option value="">Select a career</option>
+                  {careers.map((career) => (
+                    <option key={career.career_id} value={career.career_id}>
+                      {career.title} — {career.compatibility_score}% match
+                      {career.career_id === currentCareerId ? " (current)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <p className="mt-2 text-xs text-slate-400">
+                Switching keeps your other roadmaps and their progress, and you
+                can switch back anytime. A career you have not used before gets
+                a new roadmap, which can take a few seconds.
+              </p>
+
+              {selectedCareerId !== "" &&
+                selectedCareerId !== currentCareerId && (
+                  <button
+                    type="button"
+                    onClick={handleSwitchCareer}
+                    disabled={careerSwitching}
+                    className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand-accent px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-blue-500/15 transition-all hover:bg-brand-navy disabled:opacity-60"
+                  >
+                    {careerSwitching ? "Switching..." : "Switch target career"}
+                  </button>
+                )}
+
+              {careerMessage && (
+                <p className="mt-3 text-xs text-emerald-600">{careerMessage}</p>
+              )}
+
+              {careerError && (
+                <p className="mt-3 text-xs text-red-600">{careerError}</p>
+              )}
+            </div>
 
             <div className="grid gap-5 md:grid-cols-2">
               <Field label="Work preference" icon={<Laptop size={15} />}>
