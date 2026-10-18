@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { apiGet } from "@/lib/api/client";
+import { useAppStore } from "@/lib/store/app-store";
 
 /**
  * =====================================================================
@@ -27,7 +28,7 @@ import { apiGet } from "@/lib/api/client";
  * =====================================================================
  *
  * FILE:
- * frontend/app/matches/page.tsx
+ * frontend/app/(app)/matches/page.tsx
  *
  * ---------------------------------------------------------------------
  * WHAT'S REAL VS. WHAT WAS PLACEHOLDER
@@ -44,6 +45,36 @@ import { apiGet } from "@/lib/api/client";
  * - "View skill gaps" now navigates to /gap?career={id}, passing
  *   the REAL selected career's id through the URL so the gap page
  *   knows which career to analyze.
+ *
+ * ---------------------------------------------------------------------
+ * "CURRENT TARGET" BADGE (two different ideas on one page)
+ * ---------------------------------------------------------------------
+ * This page shows two things that look similar but mean different
+ * things, and keeping them apart is the whole point of this change:
+ *
+ *   1. SELECTED CAREER (the highlighted card + the right-hand panel):
+ *      whatever the user last clicked. It is only for browsing a
+ *      career's details. Before this change it always started on the
+ *      top match, which read like "this is my target" even when it
+ *      was not (e.g. target = Backend, top match = Full-Stack).
+ *   2. CURRENT TARGET (the badge): the career the user is actually
+ *      working toward. It comes from the shared store's dashboard
+ *      summary (the same data the dashboard, the sidebar links and the
+ *      edit-profile dropdown use), so every page agrees on it. The
+ *      badge stays on the target's card wherever the highlight is.
+ *
+ * The match percentages and the ranking do NOT depend on the target:
+ * they come only from the user's tested skills, so switching target
+ * never reorders this list. That is by design — this page answers
+ * "what am I best suited for?", the target answers "what am I working
+ * toward?".
+ *
+ * Which card is highlighted when nothing has been clicked is DERIVED
+ * (clicked card, else the target's card, else the top match) instead
+ * of being set once inside the fetch: the summary and the matches
+ * arrive at different times, and deriving means the order they arrive
+ * in cannot matter. If the user has no roadmap yet there is no target,
+ * so no badge shows and the top match is highlighted as before.
  * =====================================================================
  */
 
@@ -61,7 +92,29 @@ export default function CareerMatchesPage() {
   const [matches, setMatches] = useState<CareerMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedCareerId, setSelectedCareerId] = useState<number | null>(null);
+  // The card the user clicked. null = nothing clicked yet; the highlighted
+  // card is then derived below (target's card, else the top match).
+  const [pickedCareerId, setPickedCareerId] = useState<number | null>(null);
+
+  // The user's current target career, from the shared store. Same
+  // derivation as the layout: it is the roadmap's career if the user has
+  // a roadmap, otherwise null (no target yet).
+  const targetCareerId = useAppStore((s) =>
+    s.summary?.has_roadmap && s.summary.career_id ? s.summary.career_id : null
+  );
+  const loadSummary = useAppStore((s) => s.loadSummary);
+
+  /**
+   * -------------------------------------------------------------------
+   * LOAD THE CURRENT TARGET (cached copy is fine)
+   * -------------------------------------------------------------------
+   * If the dashboard or layout already loaded the summary this does
+   * nothing; if not, it shares one request with them. Errors are
+   * ignored on purpose: without a target the page simply shows no badge.
+   */
+  useEffect(() => {
+    loadSummary().catch(() => {});
+  }, [loadSummary]);
 
   /**
    * -------------------------------------------------------------------
@@ -75,11 +128,6 @@ export default function CareerMatchesPage() {
     apiGet<{ matches: CareerMatch[] }>("/careers/match")
       .then((data) => {
         setMatches(data.matches);
-        // Select the top match by default, matching the original
-        // design's "first career selected on load" behavior.
-        if (data.matches.length > 0) {
-          setSelectedCareerId(data.matches[0].career_id);
-        }
         setLoading(false);
       })
       .catch((err) => {
@@ -90,8 +138,13 @@ export default function CareerMatchesPage() {
       });
   }, []);
 
+  // Highlighted card: the one the user clicked, otherwise the target's
+  // card, otherwise the top match (matches arrive best-first).
   const selectedCareer =
-    matches.find((career) => career.career_id === selectedCareerId) ?? matches[0];
+    matches.find((career) => career.career_id === pickedCareerId) ??
+    matches.find((career) => career.career_id === targetCareerId) ??
+    matches[0];
+  const selectedCareerId = selectedCareer?.career_id ?? null;
 
   /**
    * -------------------------------------------------------------------
@@ -229,7 +282,8 @@ export default function CareerMatchesPage() {
                     career={career}
                     rank={index + 1}
                     selected={selectedCareerId === career.career_id}
-                    onSelect={() => setSelectedCareerId(career.career_id)}
+                    isTarget={targetCareerId === career.career_id}
+                    onSelect={() => setPickedCareerId(career.career_id)}
                   />
                 ))}
               </div>
@@ -240,7 +294,8 @@ export default function CareerMatchesPage() {
             ========================================================= */}
             <aside className="space-y-5 lg:sticky lg:top-28">
               {/* =======================================================
-                  SELECTED CAREER
+                  CAREER DETAILS (the highlighted card — NOT necessarily
+                  the user's target; the target has its own badge)
               ======================================================= */}
               {selectedCareer && (
                 <div className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-xl shadow-slate-900/[0.04]">
@@ -253,10 +308,17 @@ export default function CareerMatchesPage() {
                       </div>
 
                       <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.15em] text-blue-200">
-                        Selected career
+                        Career details
                       </p>
 
                       <h2 className="mt-1 text-xl font-bold">{selectedCareer.title}</h2>
+
+                      {targetCareerId === selectedCareer.career_id && (
+                        <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-white">
+                          <Target size={9} />
+                          Your current target
+                        </span>
+                      )}
 
                       <div className="mt-5 flex items-end gap-2">
                         <span className="text-4xl font-bold">
@@ -319,7 +381,8 @@ export default function CareerMatchesPage() {
                     </h3>
                     <p className="mt-1.5 text-xs leading-5 text-slate-500">
                       Your assessed skill levels are compared with the skills
-                      and levels required by each career.
+                      and levels required by each career. Matches do not change
+                      when you change your target career.
                     </p>
                   </div>
                 </div>
@@ -336,16 +399,21 @@ export default function CareerMatchesPage() {
  * =====================================================================
  * CAREER MATCH CARD
  * =====================================================================
+ * `selected` = the highlighted card (browsing). `isTarget` = the user's
+ * current target career (the badge). They are independent: a card can be
+ * either, both, or neither.
  */
 function CareerMatchCard({
   career,
   rank,
   selected,
+  isTarget,
   onSelect,
 }: {
   career: CareerMatch;
   rank: number;
   selected: boolean;
+  isTarget: boolean;
   onSelect: () => void;
 }) {
   return (
@@ -386,6 +454,13 @@ function CareerMatchCard({
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-700">
                 <Star size={9} fill="currentColor" />
                 Best match
+              </span>
+            )}
+
+            {isTarget && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-brand-accent">
+                <Target size={9} />
+                Current target
               </span>
             )}
           </div>
